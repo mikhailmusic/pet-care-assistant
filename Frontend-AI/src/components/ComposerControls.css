@@ -1,0 +1,41 @@
+.composer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #e5edff;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 6px 10px;
+  border-radius: 10px;
+}
+
+.control select,
+.control input[type='number'] {
+  background: rgba(12, 18, 36, 0.7);
+  color: #e5edff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.control input[type='range'] {
+  width: 120px;
+}
+
+.control small {
+  color: rgba(229, 237, 255, 0.7);
+  font-size: 11px;
+}
+
+.inline-settings .composer-controls {
+  border-radius: 10px;
+  background: rgba(16, 24, 42, 0.6);
+}

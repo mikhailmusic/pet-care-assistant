@@ -16,6 +16,7 @@ langchain-community==0.3.31
 langchain-gigachat==0.3.12
 langchain-huggingface==0.3.1
 langchain-chroma==0.2.6
+langgraph==0.6.11
 
 ddgs==9.9.3
 httpx==0.28.1

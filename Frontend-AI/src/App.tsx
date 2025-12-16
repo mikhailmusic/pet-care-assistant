@@ -1,24 +1,86 @@
-import { useState } from 'react'
-import './assets/App.css'
+import { useEffect, type ReactNode } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
+import { ChatPage } from './pages/ChatPage';
+import { useAuthStore } from './stores/authStore';
+import './assets/App.css';
 
-function App() {
-  const [count, setCount] = useState(0)
+function PrivateRoute({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuthStore();
 
-  return (
-    <>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={
-          () => setCount((count) => count + 1)
-          }>count is {count}
-          </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
+  if (isLoading) {
+    return (
+      <div className="loading-screen">
+        <div className="loader"></div>
+        <p>Загружаем профиль…</p>
       </div>
-      <p className="read-the-docs">Click on the Vite and React logos to learn more</p>
-    </>
-  )
+    );
+  }
+
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 }
 
-export default App
+function PublicRoute({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuthStore();
+
+  if (isLoading) {
+    return (
+      <div className="loading-screen">
+        <div className="loader"></div>
+        <p>Загружаем…</p>
+      </div>
+    );
+  }
+
+  return !isAuthenticated ? <>{children}</> : <Navigate to="/" />;
+}
+
+function App() {
+  const init = useAuthStore((state) => state.init);
+
+  useEffect(() => {
+    init();
+  }, [init]);
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <LoginPage />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <PublicRoute>
+              <RegisterPage />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/"
+          element={
+            <PrivateRoute>
+              <ChatPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/chat/:chatId"
+          element={
+            <PrivateRoute>
+              <ChatPage />
+            </PrivateRoute>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;

@@ -4,7 +4,7 @@ from typing import List
 from fastapi import APIRouter, Query, status
 
 from app.dto import ChatCreateDTO, ChatUpdateDTO, ChatResponseDTO, ChatListItemDTO
-from app.dto import ChatSettingsDTO
+from app.dto import ChatSettingsDTO, MessageCreateDTO, MessageResponseDTO
 from app.dependencies import CurrentUser
 from app.dependencies import ChatServiceDep
 
@@ -67,3 +67,26 @@ async def get_chat_settings(
     service: ChatServiceDep,
 ):
     return await service.get_chat_settings(chat_id=chat_id, user_id=current_user.id)
+
+
+@router.post("/{chat_id}/send", response_model=MessageResponseDTO, status_code=status.HTTP_201_CREATED)
+async def send_message(
+    chat_id: int,
+    payload: MessageCreateDTO,
+    current_user: CurrentUser,
+    service: ChatServiceDep,
+):
+    """
+    Отправить сообщение и получить ответ от ассистента.
+
+    Этот endpoint:
+    1. Сохраняет сообщение пользователя
+    2. Запускает оркестратор агентов
+    3. Сохраняет ответ ассистента
+    4. Возвращает ответ ассистента
+    """
+    return await service.send_message(
+        chat_id=chat_id,
+        user_id=current_user.id,
+        dto=payload,
+    )

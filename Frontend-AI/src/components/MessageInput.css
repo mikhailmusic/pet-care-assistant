@@ -1,0 +1,129 @@
+/* Message Input */
+.message-input-container {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(10, 14, 26, 0.8);
+  padding: 12px 18px;
+  backdrop-filter: blur(8px);
+}
+
+.message-input-inner {
+  max-width: 840px;
+  margin: 0 auto;
+}
+
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.settings-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5edff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.settings-toggle:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.toolbar-hint {
+  color: rgba(229, 237, 255, 0.7);
+  font-size: 12px;
+}
+
+.inline-settings {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(6, 9, 18, 0.85);
+}
+
+.selected-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.file-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  font-size: 13px;
+  color: #e5edff;
+}
+
+.file-chip button {
+  background: transparent;
+  padding: 0 4px;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.file-chip button:hover {
+  color: #ffd166;
+}
+
+.message-input-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+.file-attach-btn {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 12px;
+  font-size: 18px;
+  border-radius: 12px;
+  color: #e5edff;
+}
+
+.file-attach-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.message-textarea {
+  flex: 1;
+  min-height: 48px;
+  max-height: 220px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  font-size: 15px;
+  resize: none;
+  outline: none;
+  background: rgba(12, 18, 36, 0.65);
+  color: #e5edff;
+}
+
+.message-textarea:focus {
+  border-color: #1fa97a;
+}
+
+.send-btn {
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #0b0f1c;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  min-width: 120px;
+}
+
+.send-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.send-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

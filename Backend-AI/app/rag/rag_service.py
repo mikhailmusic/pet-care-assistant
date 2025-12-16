@@ -1,6 +1,7 @@
 from typing import List, Dict
 import uuid
 from pathlib import Path
+from functools import lru_cache
 
 from langchain_chroma import Chroma
 from langchain.schema import Document
@@ -281,6 +282,8 @@ class RAGService:
         }
 
 
-get_rag_service = RAGService()
 
+@lru_cache
+def get_rag_service(use_hybrid_retriever: bool = False) -> "RAGService":
+    return RAGService(use_hybrid_retriever=use_hybrid_retriever)
 

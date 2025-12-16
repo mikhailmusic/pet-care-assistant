@@ -68,19 +68,18 @@ class MessageService:
         self,
         chat_id: int,
         user_id: int,
-        content: str,
-        file_ids: Optional[List[str]] = None,
+        message_dto: MessageCreateDTO,
     ) -> MessageResponseDTO:
         """Создать USER сообщение. Резолвит file_ids -> files metadata."""
         await self._assert_chat_access(chat_id, user_id)
 
-        files_json = await self._resolve_files(user_id=user_id, file_ids=file_ids)
+        files_json = await self._resolve_files(user_id=user_id, file_ids=message_dto.files)
         msg_type = _detect_message_type([FileMetadataDTO(**f) for f in files_json] if files_json else None)
 
         msg = Message(
             chat_id=chat_id,
             role=MessageRole.USER,
-            content=content,
+            content=message_dto.content,
             message_type=msg_type,
             files=files_json,
             metadata_json=None,
@@ -155,13 +154,18 @@ class MessageService:
         """Сообщения для UI (пагинация)."""
         await self._assert_chat_access(chat_id, user_id)
 
-        messages = await self.message_repository.get_chat_messages(chat_id=chat_id, skip=skip, limit=limit)
-        # Репозиторий сейчас без order_by — сортируем на уровне сервиса
-        messages.sort(key=lambda m: m.created_at, reverse=(order.lower() == "desc"))
+        # Сортировка теперь в БД (правильно: сначала ORDER BY, потом LIMIT)
+        order_desc = order.lower() == "desc"
+        messages = await self.message_repository.get_chat_messages(
+            chat_id=chat_id,
+            skip=skip,
+            limit=limit,
+            order_desc=order_desc
+        )
 
         return [MessageResponseDTO.model_validate(m) for m in messages]
 
-    async def get_recent_for_context(
+    async def get_recent_messages_for_context(
         self,
         chat_id: int,
         user_id: int,
@@ -178,8 +182,12 @@ class MessageService:
             raise AuthorizationException("Нет доступа к этому чату")
 
         effective_limit = limit or chat.message_limit or 20
-        messages = await self.message_repository.get_chat_messages(chat_id=chat_id, limit=effective_limit)
-        messages.sort(key=lambda m: m.created_at)
+        # Сортировка уже в БД, order_desc=False означает old -> new
+        messages = await self.message_repository.get_chat_messages(
+            chat_id=chat_id,
+            limit=effective_limit,
+            order_desc=False
+        )
 
         return messages
 
@@ -189,8 +197,21 @@ class MessageService:
         user_id: int,
         content: str,
         file_ids: Optional[List[str]] = None,
-    ) -> MessageResponseDTO:
-        """Редактирование только USER сообщений."""
+        delete_subsequent: bool = True,
+    ) -> tuple[MessageResponseDTO, int]:
+        """
+        Редактирование только USER сообщений.
+
+        Args:
+            message_id: ID редактируемого сообщения
+            user_id: ID пользователя
+            content: Новый текст сообщения
+            file_ids: Новые файлы (если None, файлы не меняются)
+            delete_subsequent: Удалять ли последующие сообщения (для регенерации ответа)
+
+        Returns:
+            tuple: (обновленное сообщение, количество удаленных последующих сообщений)
+        """
         msg = await self.message_repository.get_by_id(message_id)
         if not msg:
             raise MessageNotFoundException(message_id)
@@ -200,6 +221,16 @@ class MessageService:
         if msg.role != MessageRole.USER:
             raise AuthorizationException("Можно редактировать только свои сообщения")
 
+        # Удаляем последующие сообщения (отбрасываем историю для регенерации)
+        deleted_count = 0
+        if delete_subsequent:
+            deleted_count = await self.message_repository.delete_messages_after(
+                chat_id=msg.chat_id,
+                after_message_id=message_id
+            )
+            logger.info(f"Deleted {deleted_count} messages after {message_id} for regeneration")
+
+        # Обновляем само сообщение
         msg.content = content
 
         if file_ids is not None:
@@ -208,8 +239,9 @@ class MessageService:
             msg.message_type = _detect_message_type([FileMetadataDTO(**f) for f in files_json] if files_json else None)
 
         msg = await self.message_repository.update(msg)
-        logger.info(f"Updated message {message_id}")
-        return MessageResponseDTO.model_validate(msg)
+        logger.info(f"Updated message {message_id}, deleted {deleted_count} subsequent messages")
+
+        return MessageResponseDTO.model_validate(msg), deleted_count
 
     async def delete_message(
         self,

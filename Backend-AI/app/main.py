@@ -8,7 +8,7 @@ from app.config import settings
 from app.integrations import init_db, close_db
 from app.integrations import minio_service
 from app.utils.exceptions import PetCareException
-from app.api import auth_api
+from app.api import auth_api, chats_api, messages
 from app.agents.calendar_agent import CalendarAgent
 from app.dependencies.services import get_user_service
 from app.services.user_service import UserService
@@ -66,7 +66,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_api.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(auth_api.router)
+app.include_router(chats_api.router) 
+app.include_router(messages.router) 
 
 
 @app.exception_handler(PetCareException)
@@ -103,7 +105,7 @@ async def health_check():
         "docs": "/docs" if settings.DEBUG else "Disabled in production",
     }
 
-@app.post("/api/test/calendar", tags=["Testing"])
+@app.post("/test/calendar", tags=["Testing"])
 async def test_calendar_agent(
     request: dict,  # {"user_id": 123, "message": "...", "context": {...}}
     user_service: UserService = Depends(get_user_service)

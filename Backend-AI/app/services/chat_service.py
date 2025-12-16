@@ -202,3 +202,85 @@ class ChatService:
             voice_response_enabled=chat.voice_response_enabled,
             max_tokens=chat.max_tokens,
         )
+
+    async def update_message_and_regenerate(
+        self,
+        message_id: int,
+        user_id: int,
+        content: str,
+        file_ids: Optional[List[str]] = None,
+    ) -> MessageResponseDTO:
+        """
+        Обновить USER сообщение и автоматически перегенерировать ответ ассистента.
+
+        Полный цикл:
+        1) Обновить USER сообщение (content, files)
+        2) Удалить все последующие сообщения (отбросить историю)
+        3) Собрать контекст и настройки
+        4) Вызвать оркестратор
+        5) Сохранить новый ASSISTANT ответ
+        6) Вернуть ASSISTANT ответ
+
+        Это аналог send_message, но вместо создания нового USER сообщения - обновляем существующее.
+        """
+        start = time.monotonic()
+
+        # 1) Обновляем USER сообщение + удаляем последующие
+        _, deleted_count = await self.message_service.update_user_message(
+            message_id=message_id,
+            user_id=user_id,
+            content=content,
+            file_ids=file_ids,
+            delete_subsequent=True,  # всегда удаляем последующие
+        )
+
+        logger.info(f"Updated message {message_id}, deleted {deleted_count} subsequent messages")
+
+        # Получаем chat_id из обновленного сообщения
+        msg = await self.message_service.message_repository.get_by_id(message_id)
+        chat_id = msg.chat_id
+
+        # 2) История для контекста
+        history = await self.message_service.get_recent_messages_for_context(
+            chat_id=chat_id,
+            user_id=user_id,
+            limit=None,
+        )
+
+        # 3) Настройки чата
+        settings: ChatSettingsDTO = await self.get_chat_settings(chat_id=chat_id, user_id=user_id)
+
+        # 4) Файлы из обновленного сообщения
+        uploaded_files = file_ids or []
+
+        # 5) Оркестратор
+        result: OrchestratorResult = await self.orchestrator.run(
+            messages=history,
+            chat_settings=settings,
+            uploaded_files=uploaded_files,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+
+        # 6) Metadata ассистента
+        assistant_metadata: Dict[str, Any] = dict(result.metadata or {})
+        if result.generated_files:
+            assistant_metadata["generated_content"] = result.generated_files
+
+        # 7) Создаем новое сообщение ассистента
+        assistant_msg = await self.message_service.create_assistant_message(
+            chat_id=chat_id,
+            user_id=user_id,
+            content=result.text,
+            metadata=assistant_metadata or None,
+            processing_time_ms=elapsed_ms,
+        )
+
+        logger.info(
+            f"update_message_and_regenerate: message={message_id} chat={chat_id} "
+            f"deleted={deleted_count} took={elapsed_ms}ms"
+        )
+
+        return assistant_msg

@@ -6,7 +6,7 @@ from app.dependencies import CurrentUser
 from app.dependencies import UserServiceDep
 
 
-router = APIRouter()
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/register", response_model=TokenResponseDTO, status_code=status.HTTP_201_CREATED)

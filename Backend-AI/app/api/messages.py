@@ -5,11 +5,9 @@ from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
 
 from app.dto import MessageResponseDTO, MessageCreateDTO, MessageUpdateDTO
-from app.dependencies import CurrentUser
-from app.dependencies import MessageServiceDep
+from app.dependencies import CurrentUser, MessageServiceDep, ChatServiceDep
 
 router = APIRouter(tags=["Messages"])
-
 
 
 class MetadataPatchRequest(BaseModel):
@@ -45,8 +43,7 @@ async def create_user_message(
     return await service.create_user_message(
         chat_id=chat_id,
         user_id=current_user.id,
-        content=payload.content,
-        file_ids=payload.files,
+        message_dto=payload,
     )
 
 
@@ -55,9 +52,22 @@ async def update_user_message(
     message_id: int,
     payload: MessageUpdateDTO,
     current_user: CurrentUser,
-    service: MessageServiceDep,
+    chat_service: ChatServiceDep,
 ):
-    return await service.update_user_message(
+    """
+    Обновление USER сообщения с автоматической регенерацией ответа ассистента.
+
+    Полный цикл:
+    1. Обновляет USER сообщение (content, files)
+    2. Удаляет все последующие сообщения (отбрасывает историю)
+    3. Вызывает оркестратор с обновленной историей
+    4. Создает новое ASSISTANT сообщение
+    5. Возвращает ASSISTANT ответ
+
+    Это точно такая же логика как POST /chats/{chat_id}/send,
+    но вместо создания нового USER сообщения - обновляет существующее.
+    """
+    return await chat_service.update_message_and_regenerate(
         message_id=message_id,
         user_id=current_user.id,
         content=payload.content,

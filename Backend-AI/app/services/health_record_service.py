@@ -7,8 +7,8 @@ from app.models import HealthRecord, RecordType
 
 
 class HealthRecordService:
-    def __init__(self, repository: HealthRecordRepository,pet_repository: PetRepository):
-        self.repository = repository
+    def __init__(self, health_repo: HealthRecordRepository,pet_repository: PetRepository):
+        self.health_repo = health_repo
         self.pet_repository = pet_repository
     
     async def _verify_pet_ownership(self, pet_id: int, user_id: int) -> None:
@@ -26,11 +26,11 @@ class HealthRecordService:
         data = record_dto.model_dump(mode="json", exclude_unset=True)
         record = HealthRecord(**data)
 
-        record = await self.repository.create(record)
+        record = await self.health_repo.create(record)
         return HealthRecordResponseDTO.model_validate(record)
     
     async def get_health_record_by_id(self, record_id: int, user_id: int) -> Optional[HealthRecordResponseDTO]:
-        record = await self.repository.get_by_id(record_id, include_deleted=False)
+        record = await self.health_repo.get_by_id(record_id, include_deleted=False)
         
         if not record:
             return None
@@ -42,7 +42,7 @@ class HealthRecordService:
     async def get_pet_health_records(self, pet_id: int, user_id: int,include_deleted: bool = False) -> List[HealthRecordResponseDTO]:
         await self._verify_pet_ownership(pet_id, user_id)
         
-        records = await self.repository.get_by_pet_id(
+        records = await self.health_repo.get_by_pet_id(
             pet_id, 
             include_deleted=include_deleted
         )
@@ -57,7 +57,7 @@ class HealthRecordService:
         except ValueError:
             raise ValidationException(f"Неизвестный тип записи: {record_type}")
 
-        records = await self.repository.get_by_type(
+        records = await self.health_repo.get_by_type(
             pet_id=pet_id,
             record_type=record_type_enum,
         )
@@ -67,12 +67,12 @@ class HealthRecordService:
     async def get_unresolved_records(self,pet_id: int,user_id: int) -> List[HealthRecordResponseDTO]:
         await self._verify_pet_ownership(pet_id, user_id)
         
-        records = await self.repository.get_unresolved(pet_id)
+        records = await self.health_repo.get_unresolved(pet_id)
         
         return [HealthRecordResponseDTO.model_validate(record) for record in records]
     
     async def update_health_record(self, record_id: int, user_id: int, record_dto: HealthRecordUpdateDTO) -> HealthRecordResponseDTO:
-        record = await self.repository.get_by_id(record_id, include_deleted=False)
+        record = await self.health_repo.get_by_id(record_id, include_deleted=False)
         if not record:
             raise HealthRecordNotFoundException(record_id)
 
@@ -85,28 +85,28 @@ class HealthRecordService:
         for field, value in data.items():
             setattr(record, field, value)
 
-        record = await self.repository.update(record)
+        record = await self.health_repo.update(record)
         return HealthRecordResponseDTO.model_validate(record)
 
     
     async def soft_delete_health_record(self, record_id: int, user_id: int) -> bool:
-        record = await self.repository.get_by_id(record_id, include_deleted=False)
+        record = await self.health_repo.get_by_id(record_id, include_deleted=False)
         if not record:
             raise HealthRecordNotFoundException(record_id)
 
         await self._verify_pet_ownership(record.pet_id, user_id)
 
         record.soft_delete()
-        await self.repository.update(record)
+        await self.health_repo.update(record)
         return True
 
     async def restore_health_record(self, record_id: int, user_id: int) -> HealthRecordResponseDTO:
-        record = await self.repository.get_by_id(record_id, include_deleted=True)
+        record = await self.health_repo.get_by_id(record_id, include_deleted=True)
         if not record:
             raise HealthRecordNotFoundException(record_id)
 
         await self._verify_pet_ownership(record.pet_id, user_id)
 
         record.restore()
-        record = await self.repository.update(record)
+        record = await self.health_repo.update(record)
         return HealthRecordResponseDTO.model_validate(record)

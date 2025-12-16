@@ -1,0 +1,121 @@
+/* Auth Pages (Login/Register) */
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: radial-gradient(120% 120% at 20% 20%, rgba(99, 147, 255, 0.15), rgba(255, 255, 255, 0.9)),
+    linear-gradient(135deg, #e6ecff 0%, #fefefe 100%);
+  padding: 20px;
+}
+
+.auth-container {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+  padding: 40px;
+  width: 100%;
+  max-width: 440px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  color: #1f2a37;
+  backdrop-filter: blur(10px);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.auth-header h1 {
+  font-size: 28px;
+  margin-bottom: 8px;
+  color: #1f2a37;
+  font-weight: 800;
+}
+
+.auth-header p {
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-error {
+  background: rgba(255, 87, 87, 0.08);
+  color: #a71d2a;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  border: 1px solid rgba(255, 87, 87, 0.3);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2a37;
+}
+
+.form-group input {
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #f8fafc;
+  color: #1f2a37;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #2c7be5;
+  box-shadow: 0 0 0 3px rgba(44, 123, 229, 0.2);
+}
+
+.form-group small {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.auth-button {
+  background: linear-gradient(135deg, #2c7be5, #1b5fcf);
+  color: #ffffff;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 12px 30px rgba(44, 123, 229, 0.25);
+}
+
+.auth-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 38px rgba(44, 123, 229, 0.35);
+}
+
+.auth-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.auth-footer a {
+  color: #2c7be5;
+  font-weight: 700;
+}

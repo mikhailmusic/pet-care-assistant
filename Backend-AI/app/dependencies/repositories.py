@@ -8,6 +8,7 @@ from app.repositories.user_repository import UserRepository
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.pet_repository import PetRepository
 from app.repositories.message_repository import MessageRepository
+from app.repositories.health_record_repository import HealthRecordRepository
 
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
@@ -24,5 +25,10 @@ def get_chat_repository(db: DbSession) -> ChatRepository:
 def get_pet_repository(db: DbSession) -> PetRepository:
     return PetRepository(db)
 
+
 def get_message_repository(db: DbSession) -> MessageRepository:
     return MessageRepository(db)
+
+
+def get_health_record_repository(db: DbSession) -> HealthRecordRepository:
+    return HealthRecordRepository(db)
