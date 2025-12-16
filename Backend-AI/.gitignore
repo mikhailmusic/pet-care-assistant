@@ -1,0 +1,117 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Uploads and temporary files
+uploads/*
+!uploads/.gitkeep
+temp/
+tmp/
+
+# MinIO/S3 local files
+minio_data/
+
+# ChromaDB vector store
+vector_db/
+chroma_db/
+
+# Alembic
+alembic/versions/*.py
+!alembic/versions/__init__.py
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# Backups
+*.sql
+*.backup
+backup_*.sql
+
+# Google Calendar credentials (for future)
+credentials/**
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Reports and generated files
+reports/
+outputs/
+*.pdf
+*.docx
+*.xlsx
+
+# Media files (except examples)
+*.mp4
+*.avi
+*.mov
+*.mp3
+*.wav
+*.ogg
+
+# Keep example directories
+!examples/
+!docs/assets/
