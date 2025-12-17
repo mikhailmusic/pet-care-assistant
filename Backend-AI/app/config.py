@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIRECTORY: str = "./vector_db"
     CHROMA_COLLECTION_NAME: str = "petcare_documents"
     
+    DEFAULT_TIMEZONE: str = "Europe/Moscow"
+    
     APP_NAME: str = "PetCare AI Assistant"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False

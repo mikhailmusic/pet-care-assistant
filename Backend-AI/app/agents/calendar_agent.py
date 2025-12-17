@@ -21,7 +21,7 @@ from app.config import settings
 class CalendarContext:
     user_id: int
     calendar_client: GoogleCalendarClient
-    user_timezone: str = "UTC"
+    user_timezone: str = settings.DEFAULT_TIMEZONE
     current_pet_name: str = ""
 
 
@@ -400,7 +400,7 @@ async def check_calendar_availability(
 # HELPER FUNCTIONS
 # ============================================================================
 
-def _parse_datetime(dt_str: str, user_timezone: str = "UTC") -> datetime:
+def _parse_datetime(dt_str: str, user_timezone: str = settings.DEFAULT_TIMEZONE) -> datetime:
     """Парсинг datetime из строки"""
     if isinstance(dt_str, datetime):
         if dt_str.tzinfo is None:
@@ -518,7 +518,7 @@ class CalendarAgent:
             tool_context = CalendarContext(
                 user_id=user_id,
                 calendar_client=calendar_client,
-                user_timezone=context.get("user_timezone", "UTC"),
+                user_timezone=context.get("user_timezone", settings.DEFAULT_TIMEZONE),
                 current_pet_name=context.get("current_pet_name", "")
             )
             
