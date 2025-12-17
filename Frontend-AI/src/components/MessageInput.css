@@ -5,6 +5,8 @@
   padding: 12px 18px;
   backdrop-filter: blur(8px);
   box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.05);
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .message-input-inner {
@@ -79,15 +81,15 @@
 }
 
 .file-attach-btn {
-  background: #e5e7eb;
+  background: #e6efff;
   padding: 12px;
   font-size: 18px;
   border-radius: 12px;
-  color: #0f172a;
+  color: #1b5fcf;
 }
 
 .file-attach-btn:hover {
-  background: #dfe3e8;
+  background: #d6e6ff;
 }
 
 .file-attach-btn.recording {
@@ -110,22 +112,24 @@
 }
 
 .message-textarea:focus {
-  border-color: #1fa97a;
-  box-shadow: 0 0 0 3px rgba(31, 169, 122, 0.2);
+  border-color: #2c7be5;
+  box-shadow: 0 0 0 3px rgba(44, 123, 229, 0.2);
 }
 
 .send-btn {
-  background: linear-gradient(135deg, #f59e0b, #f97316);
+  background: linear-gradient(135deg, #2c7be5, #1b5fcf);
   color: #ffffff;
   padding: 12px 18px;
   border-radius: 12px;
   font-size: 16px;
   font-weight: 700;
   min-width: 120px;
+  box-shadow: 0 10px 26px rgba(44, 123, 229, 0.25);
 }
 
 .send-btn:hover:not(:disabled) {
   transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(44, 123, 229, 0.35);
 }
 
 .send-btn:disabled {

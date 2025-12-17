@@ -16,8 +16,8 @@
 }
 
 .message-item.user {
-  background: #ecfdf3;
-  border-color: rgba(31, 169, 122, 0.35);
+  background: #f9fbfe;
+  border-color: rgba(44, 123, 229, 0.3);
 }
 
 .message-avatar {
@@ -109,11 +109,12 @@
 
 .btn-save {
   padding: 10px 16px;
-  background: linear-gradient(135deg, #1fa97a, #0f766e);
+  background: linear-gradient(135deg, #2c7be5, #1b5fcf);
   color: #ffffff;
   border-radius: 10px;
   font-size: 14px;
   font-weight: 700;
+  box-shadow: 0 8px 20px rgba(44, 123, 229, 0.25);
 }
 
 .btn-save:hover:not(:disabled) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { apiClient, apiErrorMessage } from '../services/api';
 import { useChatStore } from '../stores/chatStore';
 import type { ChatMessage, FileMetadata } from '../types';
@@ -128,7 +128,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
     };
   }, []);
 
-  const addFilesWithPreview = (newFiles: File[]) => {
+  const addFilesWithPreview = useCallback((newFiles: File[]) => {
     setFiles((prev) => [
       ...prev,
       ...newFiles.map((file) => ({
@@ -136,7 +136,20 @@ export function MessageInput({ chatId }: MessageInputProps) {
         previewUrl: URL.createObjectURL(file),
       })),
     ]);
-  };
+  }, []);
+
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent<File[]>).detail;
+      if (detail?.length) {
+        addFilesWithPreview(detail);
+      }
+    };
+    window.addEventListener('chat-files-dropped', listener as EventListener);
+    return () => {
+      window.removeEventListener('chat-files-dropped', listener as EventListener);
+    };
+  }, [addFilesWithPreview]);
 
   const removeFileAt = (index: number) => {
     setFiles((prev) => {
