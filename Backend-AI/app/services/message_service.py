@@ -184,14 +184,15 @@ class MessageService:
             raise AuthorizationException("Нет доступа к этому чату")
 
         effective_limit = limit or chat.message_limit or 20
-        # Сортировка уже в БД, order_desc=False означает old -> new
+        # Берем последние не удаленные сообщения, а затем переворачиваем в порядок диалога (old -> new).
         messages = await self.message_repository.get_chat_messages(
             chat_id=chat_id,
             limit=effective_limit,
-            order_desc=False
+            include_deleted=False,
+            order_desc=True,
         )
 
-        return messages
+        return list(reversed(messages))
 
     async def update_user_message(
         self,

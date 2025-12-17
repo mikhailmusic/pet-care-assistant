@@ -18,6 +18,7 @@ export function MessageItem({ message }: MessageItemProps) {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const { updateMessage, addMessage, messages, removeMessage } = useChatStore();
+  const isUserMessage = message.role === 'user';
 
   const timeAgo = useMemo(
     () =>
@@ -211,11 +212,13 @@ export function MessageItem({ message }: MessageItemProps) {
           )}
         </div>
 
-        {!isEditing && message.role === 'user' && (
+        {!isEditing && (
           <div className="message-actions">
-            <button onClick={handleEdit} className="btn-icon" title="Редактировать">
-              ✏️
-            </button>
+            {isUserMessage && (
+              <button onClick={handleEdit} className="btn-icon" title="Редактировать">
+                ✏️
+              </button>
+            )}
             <button onClick={handleDelete} className="btn-icon" title="Удалить">
               🗑️
             </button>
