@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     
     GIGACHAT_API_KEY: str
     GIGACHAT_SCOPE: str = "GIGACHAT_API_PERS"
-    GIGACHAT_MODEL: str = "GigaChat-Lite"
+    GIGACHAT_MODEL: str = "GigaChat"
     GIGACHAT_VERIFY_SSL_CERTS: bool = False
     GIGACHAT_TEMPERATURE: float = 0.7
     
