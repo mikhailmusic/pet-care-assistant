@@ -51,6 +51,77 @@ export function MessageInput({ chatId }: MessageInputProps) {
     mediaRecorderRef.current = null;
   };
 
+  const audioBufferToWav = (audioBuffer: AudioBuffer) => {
+    const numChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const dataLength = audioBuffer.length * blockAlign;
+    const buffer = new ArrayBuffer(44 + dataLength);
+    const view = new DataView(buffer);
+
+    let offset = 0;
+    const writeString = (str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+      offset += str.length;
+    };
+
+    writeString('RIFF');
+    view.setUint32(offset, 36 + dataLength, true);
+    offset += 4;
+    writeString('WAVE');
+    writeString('fmt ');
+    view.setUint32(offset, 16, true);
+    offset += 4;
+    view.setUint16(offset, format, true);
+    offset += 2;
+    view.setUint16(offset, numChannels, true);
+    offset += 2;
+    view.setUint32(offset, sampleRate, true);
+    offset += 4;
+    view.setUint32(offset, sampleRate * blockAlign, true);
+    offset += 4;
+    view.setUint16(offset, blockAlign, true);
+    offset += 2;
+    view.setUint16(offset, bitDepth, true);
+    offset += 2;
+    writeString('data');
+    view.setUint32(offset, dataLength, true);
+    offset += 4;
+
+    const channelData: Float32Array[] = [];
+    for (let channel = 0; channel < numChannels; channel++) {
+      channelData.push(audioBuffer.getChannelData(channel));
+    }
+
+    for (let i = 0; i < audioBuffer.length; i++) {
+      for (let channel = 0; channel < numChannels; channel++) {
+        const sample = Math.max(-1, Math.min(1, channelData[channel][i]));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        offset += 2;
+      }
+    }
+
+    return buffer;
+  };
+
+  const blobToWavFile = async (blob: Blob) => {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioContext = new AudioContext();
+    try {
+      const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+      const wavBuffer = audioBufferToWav(decoded);
+      const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+      return new File([wavBlob], `voice-${Date.now()}.wav`, { type: 'audio/wav' });
+    } finally {
+      await audioContext.close();
+    }
+  };
+
   useEffect(() => {
     return cleanupRecorder;
   }, []);
@@ -85,12 +156,23 @@ export function MessageInput({ chatId }: MessageInputProps) {
       mediaRecorder.onstop = () => {
         const mimeType = recordingMimeRef.current || 'audio/webm';
         const blob = new Blob(recordingChunksRef.current, { type: mimeType });
-        if (blob.size > 0) {
-          const extension = getAudioExtension(mimeType);
-          const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: mimeType });
-          setFiles((prev) => [...prev, file]);
-        }
-        cleanupRecorder();
+        void (async () => {
+          try {
+            if (blob.size > 0) {
+              const wavFile = await blobToWavFile(blob);
+              setFiles((prev) => [...prev, wavFile]);
+            }
+          } catch (conversionError) {
+            console.warn('Falling back to recorded audio blob:', conversionError);
+            if (blob.size > 0) {
+              const extension = getAudioExtension(mimeType);
+              const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: mimeType });
+              setFiles((prev) => [...prev, file]);
+            }
+          } finally {
+            cleanupRecorder();
+          }
+        })();
       };
 
       mediaRecorder.start();

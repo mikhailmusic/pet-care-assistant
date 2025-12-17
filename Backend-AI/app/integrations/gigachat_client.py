@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, BinaryIO, AsyncIterator
+from typing import Any, Dict, List, Optional, BinaryIO, AsyncIterator
 from langchain_gigachat import GigaChat
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 import re
@@ -196,3 +196,30 @@ class GigaChatClient:
 
 
 gigachat_client = GigaChatClient()
+
+
+def create_llm_from_settings(chat_settings: Optional[Dict[str, Any]] = None):
+    """
+    Build a LangChain GigaChat LLM instance using chat settings stored in DB.
+    Falls back to env defaults when settings are not provided.
+    """
+    settings = chat_settings or {}
+    model = settings.get("gigachat_model") or settings.get("model")
+    temperature = settings.get("temperature")
+    max_tokens = settings.get("max_tokens")
+
+    client = GigaChatClient(model=model, temperature=temperature)
+    llm = client.llm
+
+    bind_params: Dict[str, Any] = {}
+    if model:
+        bind_params["model"] = model
+    if temperature is not None:
+        bind_params["temperature"] = temperature
+    if max_tokens is not None:
+        bind_params["max_tokens"] = max_tokens
+
+    if bind_params:
+        return llm.bind(**bind_params)
+
+    return llm

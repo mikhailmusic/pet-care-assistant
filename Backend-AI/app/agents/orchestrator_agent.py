@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, TypedDict, Annotated
+from typing import Callable, Dict, Any, List, Optional, TypedDict, Annotated
 from datetime import datetime, timezone
 import asyncio
 from loguru import logger
@@ -13,7 +13,7 @@ import operator
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
-from app.integrations.gigachat_client import GigaChatClient
+from app.integrations.gigachat_client import create_llm_from_settings
 from app.dto import ChatSettingsDTO
 from app.models.message import Message
 
@@ -102,6 +102,7 @@ class OrchestratorAgent:
         content_generation_agent,
         email_agent,
         llm=None,
+        llm_factory: Optional[Callable[[Dict[str, Any]], Any]] = None,
         max_iterations: int = 5,
     ):
         self.pet_memory_agent = pet_memory_agent
@@ -113,8 +114,9 @@ class OrchestratorAgent:
         self.content_generation_agent = content_generation_agent
         self.email_agent = email_agent
 
-        # Base LLM (env defaults). Per-chat overrides are bound in _bind_llm.
-        self._base_llm = llm or GigaChatClient().llm
+        # LLM factory builds client using chat settings from DB (fallback to env defaults)
+        self._llm_factory = llm_factory or create_llm_from_settings
+        self._base_llm = llm or self._llm_factory({})
         self.llm = self._base_llm
 
         # Prevent concurrent runs from clobbering per-chat LLM binding.
@@ -177,24 +179,30 @@ class OrchestratorAgent:
     def _bind_llm(self, chat_settings: Dict[str, Any]):
         """
         Возвращает LLM, привязанную к настройкам чата.
-        Используем базовую LLM из env и создаем bound-экземпляр без мутации.
+        Используем фабрику, которая создает клиент по данным из БД.
         """
-        settings = chat_settings or {}
-        bind_params: Dict[str, Any] = {}
+        settings = self._normalize_chat_settings(chat_settings)
+        if not settings:
+            return self._base_llm
 
-        if settings.get("gigachat_model"):
-            bind_params["model"] = settings["gigachat_model"]
+        try:
+            bound_llm = self._llm_factory(settings) or self._base_llm
+        except Exception as e:
+            logger.error(f"LLM factory failed, falling back to base LLM: {e}")
+            bound_llm = self._base_llm
 
-        if settings.get("temperature") is not None:
-            bind_params["temperature"] = settings["temperature"]
+        return bound_llm
 
-        if settings.get("max_tokens") is not None:
-            bind_params["max_tokens"] = settings["max_tokens"]
-
-        if bind_params:
-            return self._base_llm.bind(**bind_params)
-
-        return self._base_llm
+    @staticmethod
+    def _normalize_chat_settings(chat_settings: Dict[str, Any] | None) -> Dict[str, Any]:
+        if chat_settings is None:
+            return {}
+        if hasattr(chat_settings, "model_dump"):
+            try:
+                return chat_settings.model_dump()
+            except Exception:
+                return dict(chat_settings)
+        return dict(chat_settings)
 
     def _supervisor_node(self, state: AgentState) -> AgentState:
         """

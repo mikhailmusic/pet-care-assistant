@@ -140,13 +140,13 @@ export function ChatSettings({ chat, onClose }: ChatSettingsProps) {
               <input
                 type="range"
                 min="0"
-                max="1"
+                max="2"
                 step="0.05"
                 value={settings.temperature}
                 onChange={(e) =>
                   setSettings({
                     ...settings,
-                    temperature: Math.min(1, Math.max(0, parseFloat(e.target.value))),
+                    temperature: Math.min(2, Math.max(0, parseFloat(e.target.value))),
                   })
                 }
               />

@@ -16,7 +16,7 @@ class ChatUpdateDTO(BaseModel):
     # Settings
     web_search_enabled: Optional[bool] = None
     message_limit: Optional[int] = Field(None, ge=1, le=100)
-    temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     gigachat_model: Optional[str] = Field(None, max_length=50)
     image_generation_enabled: Optional[bool] = None
     voice_response_enabled: Optional[bool] = None
@@ -54,7 +54,7 @@ class ChatListItemDTO(TimestampDTO):
 class ChatSettingsDTO(BaseModel):
     web_search_enabled: bool
     message_limit: Optional[int] = Field(None, ge=1, le=100)
-    temperature: float = Field(..., ge=0.0, le=1.0)
+    temperature: float = Field(..., ge=0.0, le=2.0)
     gigachat_model: str
     image_generation_enabled: bool
     voice_response_enabled: bool

@@ -22,7 +22,7 @@ from app.services.user_service import UserService
 from app.integrations.minio_service import MinioService
 from app.integrations.email_service import email_service
 from app.rag.rag_service import get_rag_service
-from app.integrations.gigachat_client import GigaChatClient
+from app.integrations.gigachat_client import create_llm_from_settings
 
 
 class AgentFactory:
@@ -41,7 +41,8 @@ class AgentFactory:
         self.minio_service = minio_service
 
         # Общий LLM для всех агентов
-        self.llm = GigaChatClient().llm
+        self._llm_factory = create_llm_from_settings
+        self.llm = self._llm_factory()
 
         logger.info("AgentFactory initialized")
 
@@ -127,6 +128,7 @@ class AgentFactory:
             content_generation_agent=content_generation_agent,
             email_agent=email_agent,
             llm=self.llm,
+            llm_factory=self._llm_factory,
         )
 
         logger.info("Orchestrator created with 8 specialized agents")

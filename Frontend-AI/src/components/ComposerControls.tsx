@@ -10,6 +10,7 @@ interface ComposerControlsProps {
 
 export function ComposerControls({ chat }: ComposerControlsProps) {
   const { updateChat } = useChatStore();
+  const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [settings, setSettings] = useState({
     web_search_enabled: chat.web_search_enabled,
     image_generation_enabled: chat.image_generation_enabled,
@@ -31,6 +32,14 @@ export function ComposerControls({ chat }: ComposerControlsProps) {
       max_tokens: chat.max_tokens ?? 2000,
     });
   }, [chat]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+    };
+  }, [debounceTimer]);
 
   const persist = async (patch: Partial<Chat>) => {
     try {
@@ -121,13 +130,19 @@ export function ComposerControls({ chat }: ComposerControlsProps) {
           <input
             type="range"
             min={0}
-            max={1}
+            max={2}
             step={0.05}
             value={settings.temperature}
             onChange={(e) => {
-              const value = Math.min(1, Math.max(0, parseFloat(e.target.value)));
+              const value = Math.min(2, Math.max(0, parseFloat(e.target.value)));
               setSettings((s) => ({ ...s, temperature: value }));
-              void persist({ temperature: value });
+              if (debounceTimer) {
+                clearTimeout(debounceTimer);
+              }
+              const timer = setTimeout(() => {
+                void persist({ temperature: value });
+              }, 250);
+              setDebounceTimer(timer);
             }}
           />
         </label>
