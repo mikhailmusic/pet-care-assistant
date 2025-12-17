@@ -75,12 +75,20 @@
 }
 
 .message-text pre {
-  background: #111827;
-  color: #f9fafb;
+  background: #f8fafc;
+  color: #0f172a;
   padding: 12px;
   border-radius: 12px;
   overflow-x: auto;
   margin: 8px 0;
+  border: 1px solid #e5e7eb;
+}
+
+.message-text pre code {
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .message-edit {
