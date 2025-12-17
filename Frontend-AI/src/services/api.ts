@@ -4,6 +4,8 @@ import type {
   LoginRequest,
   RegisterRequest,
   User,
+  GoogleAuthUrlResponse,
+  GoogleCredentialsResponse,
   Chat,
   ChatCreateRequest,
   ChatUpdateRequest,
@@ -73,6 +75,21 @@ class APIClient {
     const response = await this.client.post<AuthResponse>('/auth/register', data);
     localStorage.setItem('access_token', response.data.access_token);
     localStorage.setItem('user', JSON.stringify(response.data.user));
+    return response.data;
+  }
+
+  async getGoogleAuthUrl(redirectUri: string, state?: string): Promise<GoogleAuthUrlResponse> {
+    const response = await this.client.get<GoogleAuthUrlResponse>('/auth/google/url', {
+      params: { redirect_uri: redirectUri, state },
+    });
+    return response.data;
+  }
+
+  async exchangeGoogleCode(code: string, redirectUri: string): Promise<GoogleCredentialsResponse> {
+    const response = await this.client.post<GoogleCredentialsResponse>('/auth/google/exchange', {
+      code,
+      redirect_uri: redirectUri,
+    });
     return response.data;
   }
 

@@ -1,12 +1,54 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, HTTPException
 
-from app.dto import UserCreateDTO, UserLoginDTO, UserResponseDTO, TokenResponseDTO, UserUpdateDTO
+from app.dto import (
+    UserCreateDTO,
+    UserLoginDTO,
+    UserResponseDTO,
+    TokenResponseDTO,
+    UserUpdateDTO,
+    GoogleAuthUrlResponseDTO,
+    GoogleAuthCodeDTO,
+    GoogleCredentialsDTO,
+)
 from app.utils.security import create_access_token
 from app.dependencies import CurrentUser
 from app.dependencies import UserServiceDep
+from app.integrations import google_calendar_service
+from app.utils.exceptions import GoogleCalendarException
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+
+@router.get("/google/url", response_model=GoogleAuthUrlResponseDTO)
+async def get_google_auth_url(redirect_uri: str, state: str | None = None):
+    """
+    Возвращает URL авторизации Google OAuth2 для получения access/refresh токенов Calendar.
+    """
+    try:
+        auth_url, resolved_state = google_calendar_service.get_authorization_url(
+            redirect_uri=redirect_uri,
+            state=state,
+        )
+        return GoogleAuthUrlResponseDTO(auth_url=auth_url, state=resolved_state)
+    except GoogleCalendarException as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+@router.post("/google/exchange", response_model=GoogleCredentialsDTO)
+async def exchange_google_code(payload: GoogleAuthCodeDTO):
+    """
+    Обменивает code из redirect на JSON учетных данных Google (access/refresh tokens).
+    Возвращенный `google_credentials_json` нужно сохранить при регистрации пользователя.
+    """
+    try:
+        creds_json = google_calendar_service.exchange_code_for_credentials(
+            code=payload.code,
+            redirect_uri=str(payload.redirect_uri),
+        )
+        return GoogleCredentialsDTO(google_credentials_json=creds_json)
+    except GoogleCalendarException as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
 
 @router.post("/register", response_model=TokenResponseDTO, status_code=status.HTTP_201_CREATED)

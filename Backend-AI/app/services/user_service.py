@@ -21,6 +21,7 @@ class UserService:
             password_hash=hashed_password,
             full_name=user_dto.full_name,
             is_superuser=False,
+            google_credentials_json=user_dto.google_credentials_json,
         )
         user = await self.repository.create(user)
         return UserResponseDTO.model_validate(user)

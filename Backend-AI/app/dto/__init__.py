@@ -16,6 +16,11 @@ from .user_dto import (
     TokenResponseDTO,
     UserWithCredsDTO
 )
+from .google_auth_dto import (
+    GoogleAuthUrlResponseDTO,
+    GoogleAuthCodeDTO,
+    GoogleCredentialsDTO,
+)
 
 from .chat_dto import (
     ChatCreateDTO,

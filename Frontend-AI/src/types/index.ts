@@ -20,12 +20,22 @@ export interface RegisterRequest {
   email: string;
   password: string;
   full_name?: string;
+  google_credentials_json: string;
 }
 
 export interface AuthResponse {
   access_token: string;
   token_type: string;
   user: User;
+}
+
+export interface GoogleAuthUrlResponse {
+  auth_url: string;
+  state?: string;
+}
+
+export interface GoogleCredentialsResponse {
+  google_credentials_json: string;
 }
 
 // ============================================================================

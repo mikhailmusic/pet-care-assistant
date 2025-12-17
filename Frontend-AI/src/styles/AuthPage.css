@@ -108,6 +108,18 @@
   cursor: not-allowed;
 }
 
+.auth-button.secondary {
+  background: #f3f4f6;
+  color: #111827;
+  box-shadow: none;
+}
+
+.google-connect {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .auth-footer {
   text-align: center;
   margin-top: 24px;

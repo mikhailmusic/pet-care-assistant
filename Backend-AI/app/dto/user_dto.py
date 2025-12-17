@@ -7,6 +7,7 @@ class UserCreateDTO(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=64)
     full_name: str = Field(..., max_length=255)
+    google_credentials_json: str = Field(..., min_length=10)
 
 
 class UserUpdateDTO(BaseModel):

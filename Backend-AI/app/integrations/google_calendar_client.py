@@ -9,14 +9,15 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from loguru import logger
 from app.utils.exceptions import GoogleCalendarException
+from app.config import settings
 
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 REDIRECT_URI = "http://localhost:8000/auth/callback"
 
 class GoogleCalendarClient:
     
-    def __init__(self, credentials_file: str = 'credentials.json', 
-                 token_file: str = 'token.json'):
+    def __init__(self, credentials_file: Optional[str] = None, 
+                 token_file: Optional[str] = None):
         """
         Инициализация клиента
         
@@ -24,8 +25,8 @@ class GoogleCalendarClient:
             credentials_file: Путь к файлу с OAuth credentials
             token_file: Путь к файлу для хранения токенов
         """
-        self.credentials_file = credentials_file
-        self.token_file = token_file
+        self.credentials_file = credentials_file or settings.GOOGLE_CALENDAR_CREDENTIALS_FILE
+        self.token_file = token_file or settings.GOOGLE_CALENDAR_TOKEN_FILE
         self.creds = None
         self.service = None
     
@@ -79,30 +80,67 @@ class GoogleCalendarClient:
         if not self.creds:
             raise RuntimeError("Credentials are not set")
         return self.creds.to_json()
-    
-    def web_auth_url(self, redirect_uri: str = REDIRECT_URI, state: Optional[str] = None) -> str:
-        """
-        Получить URL для веб-авторизации (для Flask/FastAPI)
-        
-        Args:
-            redirect_uri: URL для редиректа после авторизации
-            state: Опциональный state для защиты от CSRF
-            
-        Returns:
-            URL для перенаправления пользователя
-        """
-        flow = Flow.from_client_secrets_file(
+
+    def _build_web_flow(self, redirect_uri: str) -> Flow:
+        return Flow.from_client_secrets_file(
             self.credentials_file,
             scopes=SCOPES,
             redirect_uri=redirect_uri
         )
-        auth_url, state = flow.authorization_url(
-            access_type='offline',
-            prompt='consent',
-            state=state
-        )
-        return auth_url
+
+    def get_authorization_url(self, redirect_uri: str = REDIRECT_URI, state: Optional[str] = None) -> tuple[str, Optional[str]]:
+        """
+        Формирует URL для OAuth авторизации (веб-поток).
+
+        Returns: (auth_url, state)
+        """
+        try:
+            flow = self._build_web_flow(redirect_uri)
+            auth_url, flow_state = flow.authorization_url(
+                access_type='offline',
+                prompt='consent',
+                include_granted_scopes='true',
+                state=state
+            )
+            return auth_url, flow_state
+        except Exception as exc:
+            logger.error(f"Failed to build Google auth URL: {exc}")
+            raise GoogleCalendarException("Не удалось сформировать ссылку для авторизации Google")
+
+    def exchange_code_for_credentials(self, code: str, redirect_uri: str = REDIRECT_URI) -> str:
+        """
+        Обменивает authorization code (из redirect) на JSON с access/refresh токенами.
+
+        ВАЖНО: redirect_uri должен точно совпадать с тем, что использовался при get_authorization_url()
+        """
+        try:
+            logger.info(f"Exchanging code with redirect_uri: {redirect_uri}")
+            flow = self._build_web_flow(redirect_uri)
+            # Используем только code, не authorization_response
+            flow.fetch_token(code=code)
+            self.creds = flow.credentials
+            # Не обновляем токен сразу после получения - он свежий
+            self.service = build('calendar', 'v3', credentials=self.creds)
+            return self.creds.to_json()
+        except Exception as exc:
+            logger.error(f"Failed to exchange Google auth code: {exc}")
+            # Пробрасываем первичную причину, чтобы фронт/логи видели реальную ошибку (часто invalid_grant из-за redirect URI).
+            raise GoogleCalendarException(f"Не удалось получить учетные данные Google: {exc}")
     
+    def web_auth_url(self, redirect_uri: str = REDIRECT_URI, state: Optional[str] = None) -> str:
+        """
+        ?????>???????'?? URL ???>?? ?????+-?????'???????????????? (???>?? Flask/FastAPI)
+        
+        Args:
+            redirect_uri: URL ???>?? ???????????????'?? ???????>?? ?????'????????????????
+            state: ???????????????>?????<?? state ???>?? ?????%???'?< ???' CSRF
+            
+        Returns:
+            URL ???>?? ?????????????????????>???????? ?????>???????????'???>??
+        """
+        auth_url, _ = self.get_authorization_url(redirect_uri=redirect_uri, state=state)
+        return auth_url
+
     def web_auth_callback(self, authorization_response: str, redirect_uri: str = REDIRECT_URI) -> None:
         """
         Завершить веб-авторизацию и получить токены
