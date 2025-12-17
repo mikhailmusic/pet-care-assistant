@@ -43,7 +43,7 @@ export function MessageItem({ message }: MessageItemProps) {
   const handleSave = async () => {
     const trimmed = editedContent.trim();
     if (!trimmed && editedFiles.length === 0) {
-      alert('Нельзя сохранить пустое сообщение.');
+      alert('Сообщение или вложения должны быть заполнены.');
       return;
     }
     const originalFiles = message.files || [];
@@ -97,7 +97,7 @@ export function MessageItem({ message }: MessageItemProps) {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Удалить сообщение и его вложения?')) return;
+    if (!confirm('Удалить сообщение и прикрепленные файлы?')) return;
 
     try {
       await apiClient.deleteMessage(message.id);
@@ -123,7 +123,7 @@ export function MessageItem({ message }: MessageItemProps) {
 
   return (
     <div className={`message-item ${message.role}`}>
-      <div className="message-avatar">{message.role === 'user' ? '🙂' : '🤖'}</div>
+      <div className="message-avatar">{message.role === 'user' ? '🧑' : '🤖'}</div>
 
       <div className="message-content-wrapper">
         <div className="message-header">
@@ -146,7 +146,7 @@ export function MessageItem({ message }: MessageItemProps) {
                 <div className="message-files editing">
                   {editedFiles.map((file) => (
                     <div key={file.file_id} className="file-attachment">
-                      <span>{file.filename}</span>
+                      <span>{file.filename || file.file_id}</span>
                       <button type="button" onClick={() => setEditedFiles((prev) => prev.filter((f) => f.file_id !== file.file_id))}>
                         Удалить
                       </button>
@@ -157,7 +157,7 @@ export function MessageItem({ message }: MessageItemProps) {
 
               <div className="message-edit-actions">
                 <button onClick={handleSave} disabled={isUpdating} className="btn-save">
-                  {isUpdating ? 'Сохраняем…' : 'Сохранить и пересчитать ответ'}
+                  {isUpdating ? 'Сохраняем…' : 'Сохранить и перегенерировать'}
                 </button>
                 <button onClick={handleCancel} disabled={isUpdating} className="btn-cancel">
                   Отмена
@@ -172,17 +172,23 @@ export function MessageItem({ message }: MessageItemProps) {
 
               {message.files && message.files.length > 0 && (
                 <div className="message-files">
-                  {message.files.map((file) => (
-                    <div key={file.file_id} className="file-attachment">
-                      {file.file_type === 'image' && file.url ? (
-                        <img src={file.url} alt={file.filename} className="file-image" />
-                      ) : (
-                        <a href={file.url} target="_blank" rel="noopener noreferrer" className="file-link">
-                          📎 {file.filename}
-                        </a>
-                      )}
-                    </div>
-                  ))}
+                  {message.files.map((file) => {
+                    const fileName = file.filename || (file as any).file_name || file.file_id;
+                    const url = file.url || '#';
+                    const isImage = file.file_type === 'image' && !!file.url;
+
+                    return (
+                      <div key={file.file_id} className="file-attachment">
+                        {isImage ? (
+                          <img src={url} alt={fileName} className="file-image" />
+                        ) : (
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="file-link">
+                            📎 {fileName}
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -198,10 +204,10 @@ export function MessageItem({ message }: MessageItemProps) {
         {!isEditing && message.role === 'user' && (
           <div className="message-actions">
             <button onClick={handleEdit} className="btn-icon" title="Редактировать">
-              ✎
+              ✏️
             </button>
             <button onClick={handleDelete} className="btn-icon" title="Удалить">
-              🗑
+              🗑️
             </button>
           </div>
         )}

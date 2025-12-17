@@ -69,10 +69,8 @@ class ChatService:
         # 3) настройки чата для оркестратора
         settings: ChatSettingsDTO = await self.get_chat_settings(chat_id=chat_id, user_id=user_id)
 
-        # uploaded_files: берём из dto.files (или из metadata user message)
-        uploaded_files = dto.files or []
-        # если ты хранишь в metadata_json["files"] — можно так:
-        # uploaded_files = (user_msg.metadata_json or {}).get("files", []) or []
+        # uploaded_files: берём из user_msg.files (уже словари с metadata)
+        uploaded_files = user_msg.files or []
 
         # 4) оркестратор
         # Ожидаемый интерфейс:
@@ -250,8 +248,8 @@ class ChatService:
         # 3) Настройки чата
         settings: ChatSettingsDTO = await self.get_chat_settings(chat_id=chat_id, user_id=user_id)
 
-        # 4) Файлы из обновленного сообщения
-        uploaded_files = file_ids or []
+        # 4) Файлы из обновленного сообщения (уже словари с metadata)
+        uploaded_files = msg.files or []
 
         # 5) Оркестратор
         result: OrchestratorResult = await self.orchestrator.run(

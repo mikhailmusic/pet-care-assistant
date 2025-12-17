@@ -4,7 +4,7 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(12, 18, 36, 0.35) 100%);
+  background: linear-gradient(180deg, #f7f9fc 0%, #f2f4f8 100%);
 }
 
 .loading-state,
@@ -15,7 +15,7 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: rgba(229, 237, 255, 0.8);
+  color: #4b5563;
 }
 
 .messages-container {

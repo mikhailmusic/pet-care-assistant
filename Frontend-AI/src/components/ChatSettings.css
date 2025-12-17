@@ -13,16 +13,16 @@
 }
 
 .chat-settings-panel {
-  background: #0d1526;
+  background: #ffffff;
   border-radius: 16px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
   width: 90%;
   max-width: 520px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e5edff;
+  border: 1px solid #e5e7eb;
+  color: #0f172a;
 }
 
 .settings-header {
@@ -30,7 +30,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .settings-header h3 {
@@ -39,16 +39,16 @@
 }
 
 .close-btn {
-  background: rgba(255, 255, 255, 0.08);
+  background: #e5e7eb;
   font-size: 24px;
   padding: 6px 10px;
-  color: #e5edff;
+  color: #0f172a;
   line-height: 1;
   border-radius: 12px;
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: #dfe3e8;
 }
 
 .settings-content {
@@ -63,14 +63,14 @@
 .settings-loading {
   padding: 40px;
   text-align: center;
-  color: rgba(229, 237, 255, 0.8);
+  color: #6b7280;
 }
 
 .setting-group {
   padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  background: #f9fafb;
 }
 
 .setting-group label {
@@ -90,7 +90,7 @@
 .setting-group small {
   display: block;
   font-size: 13px;
-  color: rgba(229, 237, 255, 0.7);
+  color: #6b7280;
   margin-top: 6px;
 }
 
@@ -98,12 +98,12 @@
 .setting-group input[type='number'] {
   width: 100%;
   padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid #d1d5db;
   border-radius: 10px;
   font-size: 14px;
   margin-top: 8px;
-  background: rgba(12, 18, 36, 0.6);
-  color: #e5edff;
+  background: #ffffff;
+  color: #0f172a;
 }
 
 .setting-group input[type='range'] {
@@ -116,13 +116,13 @@
   gap: 12px;
   justify-content: flex-end;
   padding: 20px 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid #e5e7eb;
 }
 
 .btn-primary {
   padding: 10px 24px;
   background: linear-gradient(135deg, #1fa97a, #0f766e);
-  color: #0b0f1c;
+  color: #ffffff;
   border-radius: 12px;
   font-size: 14px;
   font-weight: 700;
@@ -139,13 +139,13 @@
 
 .btn-secondary {
   padding: 10px 24px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #e5edff;
+  background: #e5e7eb;
+  color: #0f172a;
   border-radius: 12px;
   font-size: 14px;
   font-weight: 700;
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: #dfe3e8;
 }

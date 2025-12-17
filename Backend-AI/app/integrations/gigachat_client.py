@@ -12,25 +12,24 @@ from app.utils.exceptions import GigaChatException
 
 
 class GigaChatClient:
-
-    def __init__(self, model: Optional[str] = None, temperature: Optional[float] = None,) -> None:
-        model = model or settings.GIGACHAT_MODEL
-        temperature = (
-            settings.GIGACHAT_TEMPERATURE if temperature is None else temperature
-        )
+    def __init__(self, model: Optional[str] = None, temperature: Optional[float] = None) -> None:
+        # Initialize a base client with env defaults; per-request overrides are applied via .bind
+        default_model = model or settings.GIGACHAT_MODEL
+        default_temp = settings.GIGACHAT_TEMPERATURE if temperature is None else temperature
 
         base_params = dict(
             credentials=settings.GIGACHAT_API_KEY,
             scope=settings.GIGACHAT_SCOPE,
-            model=model,
+            model=default_model,
             verify_ssl_certs=settings.GIGACHAT_VERIFY_SSL_CERTS,
-            temperature=temperature,
+            temperature=default_temp,
         )
 
+        self.default_model = default_model
         self.llm = GigaChat(**base_params)
         self.llm_stream = GigaChat(**base_params, streaming=True)
 
-        logger.info(f"GigaChatClient initialized: model={model}, temperature={temperature}")
+        logger.info(f"GigaChatClient initialized: model={default_model}, temperature={default_temp}")
 
     
     def _convert_messages(self, messages: List[Dict[str, str]]) -> List[SystemMessage | HumanMessage | AIMessage]:

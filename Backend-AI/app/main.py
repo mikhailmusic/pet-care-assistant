@@ -8,7 +8,7 @@ from app.config import settings
 from app.integrations import init_db, close_db
 from app.integrations import minio_service
 from app.utils.exceptions import PetCareException
-from app.api import auth_api, chats_api, messages
+from app.api import auth_api, chats_api, messages_api, files_api
 from app.agents.calendar_agent import CalendarAgent
 from app.dependencies.services import get_user_service
 from app.services.user_service import UserService
@@ -68,7 +68,8 @@ app.add_middleware(
 
 app.include_router(auth_api.router)
 app.include_router(chats_api.router) 
-app.include_router(messages.router) 
+app.include_router(messages_api.router) 
+app.include_router(files_api.router) 
 
 
 @app.exception_handler(PetCareException)

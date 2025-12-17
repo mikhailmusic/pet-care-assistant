@@ -46,6 +46,10 @@ class MinioService:
         file_size = file.tell()
         file.seek(0)  # Возврат в начало
 
+        # Кодируем filename в base64 для поддержки кириллицы
+        import base64
+        filename_b64 = base64.b64encode(filename.encode('utf-8')).decode('ascii')
+
         def _put_object():
             self.client.put_object(
                 bucket_name=self.bucket_name,
@@ -53,7 +57,7 @@ class MinioService:
                 data=file,
                 length=file_size,
                 content_type=content_type,
-                metadata={"original_filename": filename}
+                metadata={"original_filename_b64": filename_b64}
             )
 
         try:
@@ -149,14 +153,26 @@ class MinioService:
                 bucket_name=self.bucket_name,
                 object_name=object_name,
             )
-        
+
         try:
             stat = await asyncio.to_thread(_stat)
+
+            # Декодируем filename из base64
+            import base64
+            filename_b64 = stat.metadata.get("x-amz-meta-original_filename_b64")
+            original_filename = None
+            if filename_b64:
+                try:
+                    original_filename = base64.b64decode(filename_b64).decode('utf-8')
+                except:
+                    # Fallback на старую логику если не base64
+                    original_filename = stat.metadata.get("x-amz-meta-original_filename")
+
             return {
                 "object_name": object_name,
                 "size": stat.size,
                 "content_type": stat.content_type,
-                "original_filename": stat.metadata.get("x-amz-meta-original_filename"),
+                "original_filename": original_filename,
                 "last_modified": stat.last_modified,
             }
         except S3Error as e:

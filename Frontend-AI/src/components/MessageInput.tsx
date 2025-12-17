@@ -12,7 +12,6 @@ interface MessageInputProps {
 export function MessageInput({ chatId }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<File[]>([]);
-  const [showSettings, setShowSettings] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { addMessage, updateMessage, removeMessage, isSending, setSending, currentChat } = useChatStore();
@@ -106,24 +105,6 @@ export function MessageInput({ chatId }: MessageInputProps) {
   return (
     <div className="message-input-container">
       <div className="message-input-inner">
-        <div className="input-toolbar">
-          <button
-            type="button"
-            className="settings-toggle"
-            onClick={() => setShowSettings((prev) => !prev)}
-            aria-expanded={showSettings}
-          >
-            ⚙️ Параметры
-          </button>
-          <span className="toolbar-hint">Shift+Enter — перенос строки</span>
-        </div>
-
-        {showSettings && currentChat && (
-          <div className="inline-settings">
-            <ComposerControls chat={currentChat} />
-          </div>
-        )}
-
         {files.length > 0 && (
           <div className="selected-files">
             {files.map((file, idx) => (
@@ -142,9 +123,9 @@ export function MessageInput({ chatId }: MessageInputProps) {
             type="button"
             className="file-attach-btn"
             onClick={() => fileInputRef.current?.click()}
-            title="Прикрепить файлы"
+            title="Прикрепить файл"
           >
-            📎
+            +
           </button>
 
           <input
@@ -160,7 +141,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
             className="message-textarea"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Спросите про уход, вакцинацию, рацион или прикрепите файлы…"
+            placeholder="Напишите сообщение или добавьте файл"
             rows={1}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -174,6 +155,12 @@ export function MessageInput({ chatId }: MessageInputProps) {
             {isSending ? 'Отправляем…' : 'Отправить'}
           </button>
         </form>
+
+        {currentChat && (
+          <div className="inline-settings">
+            <ComposerControls chat={currentChat} />
+          </div>
+        )}
       </div>
     </div>
   );

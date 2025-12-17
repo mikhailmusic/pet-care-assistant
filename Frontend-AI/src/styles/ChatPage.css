@@ -3,16 +3,15 @@
   display: flex;
   height: 100vh;
   overflow: hidden;
-  background: radial-gradient(120% 120% at 80% 10%, rgba(255, 194, 120, 0.15), rgba(13, 18, 30, 0.8)),
-    #0b1021;
+  background: linear-gradient(180deg, #f6f8fc 0%, #eef2f7 100%);
 }
 
 .chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(160deg, #0f172a 0%, #0b1221 50%, #0d151f 100%);
-  color: var(--text-primary);
+  background: #ffffff;
+  color: #0f172a;
 }
 
 .chat-header {
@@ -20,9 +19,10 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(8px);
-  background: rgba(15, 23, 42, 0.75);
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
 }
 
 .chat-header-left {
@@ -32,38 +32,38 @@
 }
 
 .sidebar-toggle-btn {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e5edff;
+  background: #e5e7eb;
+  color: #0f172a;
   font-size: 18px;
   padding: 10px;
   border-radius: 12px;
 }
 
 .sidebar-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: #dfe3e8;
 }
 
 .chat-title h2 {
   font-size: 19px;
   font-weight: 700;
-  color: #e5edff;
+  color: #0f172a;
 }
 
 .chat-description {
   font-size: 13px;
-  color: rgba(229, 237, 255, 0.75);
+  color: #4b5563;
 }
 
 .settings-btn {
-  background: rgba(255, 255, 255, 0.08);
+  background: #eef2f7;
   font-size: 18px;
   padding: 10px 12px;
   border-radius: 12px;
-  color: #e5edff;
+  color: #0f172a;
 }
 
 .settings-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: #e2e8f0;
 }
 
 .chat-content {
@@ -80,7 +80,7 @@
   align-items: center;
   justify-content: center;
   gap: 16px;
-  color: #e5edff;
+  color: #0f172a;
   text-align: center;
   padding: 24px;
 }
@@ -92,14 +92,14 @@
 
 .chat-empty-state p {
   font-size: 15px;
-  color: rgba(229, 237, 255, 0.8);
+  color: #4b5563;
   max-width: 520px;
 }
 
 .primary-btn {
   padding: 12px 20px;
   background: linear-gradient(135deg, #f59e0b, #f97316);
-  color: #0b0f1c;
+  color: #ffffff;
   border-radius: 12px;
   font-weight: 700;
   font-size: 15px;

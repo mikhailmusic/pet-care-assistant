@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, TypedDict, Annotated
 from datetime import datetime, timezone
+import asyncio
 from loguru import logger
 import json
 import operator
@@ -108,7 +109,12 @@ class OrchestratorAgent:
         self.calendar_agent = calendar_agent
         self.content_generation_agent = content_generation_agent
 
-        self.llm = llm or GigaChatClient().llm
+        # Base LLM (env defaults). Per-chat overrides are bound in _bind_llm.
+        self._base_llm = llm or GigaChatClient().llm
+        self.llm = self._base_llm
+
+        # Prevent concurrent runs from clobbering per-chat LLM binding.
+        self._lock = asyncio.Lock()
 
         # Строим граф
         self.graph = self._build_graph()
@@ -159,6 +165,28 @@ class OrchestratorAgent:
         )
 
         return workflow.compile()
+
+    def _bind_llm(self, chat_settings: Dict[str, Any]):
+        """
+        Возвращает LLM, привязанную к настройкам чата.
+        Используем базовую LLM из env и создаем bound-экземпляр без мутации.
+        """
+        settings = chat_settings or {}
+        bind_params: Dict[str, Any] = {}
+
+        if settings.get("gigachat_model"):
+            bind_params["model"] = settings["gigachat_model"]
+
+        if settings.get("temperature") is not None:
+            bind_params["temperature"] = settings["temperature"]
+
+        if settings.get("max_tokens") is not None:
+            bind_params["max_tokens"] = settings["max_tokens"]
+
+        if bind_params:
+            return self._base_llm.bind(**bind_params)
+
+        return self._base_llm
 
     def _supervisor_node(self, state: AgentState) -> AgentState:
         """
@@ -232,7 +260,8 @@ class OrchestratorAgent:
         context_messages.append(HumanMessage(content=decision_prompt))
 
         # Вызываем LLM
-        response = self.llm.invoke(context_messages)
+        llm = self._bind_llm(state.get("chat_settings"))
+        response = llm.invoke(context_messages)
         decision_text = response.content if hasattr(response, 'content') else str(response)
 
         # Парсим JSON
@@ -290,11 +319,19 @@ class OrchestratorAgent:
                 }
 
                 # Вызываем агента
-                result = await agent.process(
-                    user_id=state["user_id"],
-                    user_message=last_user_message,
-                    context=context
-                )
+                bound_llm = self._bind_llm(state.get("chat_settings"))
+                prev_llm = getattr(agent, "llm", None)
+                agent.llm = bound_llm
+
+                try:
+                    result = await agent.process(
+                        user_id=state["user_id"],
+                        user_message=last_user_message,
+                        context=context
+                    )
+                finally:
+                    if prev_llm is not None:
+                        agent.llm = prev_llm
 
                 # Сохраняем результат
                 if "agent_results" not in state:
@@ -464,27 +501,28 @@ class OrchestratorAgent:
         )
 
         try:
-            # Конвертируем Message → langchain messages
-            lc_messages = self._convert_messages_to_langchain(messages)
+            async with self._lock:
+                # Конвертируем Message → langchain messages
+                lc_messages = self._convert_messages_to_langchain(messages)
 
-            # Инициализируем state
-            initial_state: AgentState = {
-                "messages": lc_messages,
-                "user_id": user_id,
-                "chat_id": chat_id,
-                "uploaded_files": uploaded_files,
-                "chat_settings": chat_settings.model_dump(),
-                "current_pet_id": None,
-                "current_pet_name": "",
-                "known_pets": [],
-                "agent_results": [],
-                "generated_files": [],
-                "next_agent": None,
-                "final_response": None,
-            }
+                # Инициализируем state
+                initial_state: AgentState = {
+                    "messages": lc_messages,
+                    "user_id": user_id,
+                    "chat_id": chat_id,
+                    "uploaded_files": uploaded_files,
+                    "chat_settings": chat_settings.model_dump(),
+                    "current_pet_id": None,
+                    "current_pet_name": "",
+                    "known_pets": [],
+                    "agent_results": [],
+                    "generated_files": [],
+                    "next_agent": None,
+                    "final_response": None,
+                }
 
-            # Запускаем граф
-            final_state = await self.graph.ainvoke(initial_state)
+                # Запускаем граф
+                final_state = await self.graph.ainvoke(initial_state)
 
             # Извлекаем результат
             final_response = final_state.get("final_response", "Обработка завершена")
