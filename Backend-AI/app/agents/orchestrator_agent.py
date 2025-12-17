@@ -202,7 +202,36 @@ class OrchestratorAgent:
                 return chat_settings.model_dump()
             except Exception:
                 return dict(chat_settings)
-        return dict(chat_settings)
+        settings = dict(chat_settings)
+        if settings.get("temperature") is not None:
+            try:
+                temp = float(settings["temperature"])
+                settings["temperature"] = max(0.0, min(1.0, temp))
+            except Exception:
+                settings.pop("temperature", None)
+        return settings
+
+    @staticmethod
+    def _parse_decision(decision_text: str) -> Dict[str, Any]:
+        """
+        Parse supervisor JSON with resilience to trailing commas or minor formatting issues.
+        """
+        import re
+
+        json_match = re.search(r'\{.*\}', decision_text, re.DOTALL)
+        if not json_match:
+            return {"action": "finish", "reason": "Не удалось распарсить решение"}
+
+        raw = json_match.group(0)
+        try:
+            return json.loads(raw)
+        except Exception:
+            cleaned = re.sub(r',(\s*[}\]])', r'\1', raw)
+            try:
+                return json.loads(cleaned)
+            except Exception as e:
+                logger.error(f"Failed to parse supervisor decision: {e}")
+                return {"action": "finish", "reason": f"Ошибка парсинга: {str(e)}"}
 
     def _supervisor_node(self, state: AgentState) -> AgentState:
         """
@@ -296,17 +325,7 @@ class OrchestratorAgent:
             return state
 
         # Парсим JSON
-        try:
-            # Ищем JSON в ответе
-            import re
-            json_match = re.search(r'\{.*\}', decision_text, re.DOTALL)
-            if json_match:
-                decision = json.loads(json_match.group(0))
-            else:
-                decision = {"action": "finish", "reason": "Не удалось распарсить решение"}
-        except Exception as e:
-            logger.error(f"Failed to parse supervisor decision: {e}")
-            decision = {"action": "finish", "reason": f"Ошибка парсинга: {str(e)}"}
+        decision = self._parse_decision(decision_text)
 
         logger.info(f"Supervisor decision: {decision}")
 
