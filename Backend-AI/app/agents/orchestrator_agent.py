@@ -88,6 +88,7 @@ class OrchestratorAgent:
     5. health_nutrition - анализ здоровья и питания
     6. calendar - работа с Google Calendar
     7. content_generation - генерация контента
+    8. email - отправка писем
     """
 
     def __init__(
@@ -99,7 +100,9 @@ class OrchestratorAgent:
         health_nutrition_agent,
         calendar_agent,
         content_generation_agent,
+        email_agent,
         llm=None,
+        max_iterations: int = 5,
     ):
         self.pet_memory_agent = pet_memory_agent
         self.document_rag_agent = document_rag_agent
@@ -108,6 +111,7 @@ class OrchestratorAgent:
         self.health_nutrition_agent = health_nutrition_agent
         self.calendar_agent = calendar_agent
         self.content_generation_agent = content_generation_agent
+        self.email_agent = email_agent
 
         # Base LLM (env defaults). Per-chat overrides are bound in _bind_llm.
         self._base_llm = llm or GigaChatClient().llm
@@ -115,11 +119,12 @@ class OrchestratorAgent:
 
         # Prevent concurrent runs from clobbering per-chat LLM binding.
         self._lock = asyncio.Lock()
+        self.max_iterations = max_iterations
 
         # Строим граф
         self.graph = self._build_graph()
 
-        logger.info("OrchestratorAgent (LangGraph) initialized with 7 specialized agents")
+        logger.info("OrchestratorAgent (LangGraph) initialized with 8 specialized agents")
 
     def _build_graph(self) -> StateGraph:
         """Построить LangGraph для мультиагентной системы"""
@@ -135,6 +140,7 @@ class OrchestratorAgent:
         workflow.add_node("health_nutrition", self._create_agent_node("health_nutrition", self.health_nutrition_agent))
         workflow.add_node("calendar", self._create_agent_node("calendar", self.calendar_agent))
         workflow.add_node("content_generation", self._create_agent_node("content_generation", self.content_generation_agent))
+        workflow.add_node("email", self._create_agent_node("email", self.email_agent))
 
         # START → supervisor
         workflow.add_edge(START, "supervisor")
@@ -147,6 +153,7 @@ class OrchestratorAgent:
         workflow.add_edge("health_nutrition", "supervisor")
         workflow.add_edge("calendar", "supervisor")
         workflow.add_edge("content_generation", "supervisor")
+        workflow.add_edge("email", "supervisor")
 
         # Conditional edges: supervisor → агенты или END
         workflow.add_conditional_edges(
@@ -160,6 +167,7 @@ class OrchestratorAgent:
                 "health_nutrition": "health_nutrition",
                 "calendar": "calendar",
                 "content_generation": "content_generation",
+                "email": "email",
                 END: END,
             }
         )
@@ -209,9 +217,17 @@ class OrchestratorAgent:
         # Уже вызванные агенты
         called_agents = [r["agent"] for r in state.get("agent_results", [])]
 
+        # Предохранитель от бесконечных циклов
+        if len(called_agents) >= self.max_iterations:
+            logger.warning(f"Max iterations reached ({self.max_iterations}), finishing")
+            state["final_response"] = self._build_final_response(state, fallback_to_llm=True)
+            state["next_agent"] = END
+            return state
+
         # Настройки чата
         settings = state["chat_settings"]
         uploaded_files = state.get("uploaded_files", [])
+        
 
         # Формируем промпт для supervisor LLM
         system_prompt = self._build_supervisor_prompt(
@@ -240,29 +256,36 @@ class OrchestratorAgent:
 Верни JSON:
 {
   "action": "call_agent" | "finish",
-  "agent": "pet_memory" | "document_rag" | "multimodal" | "web_search" | "health_nutrition" | "calendar" | "content_generation" | null,
+  "agent": "pet_memory" | "document_rag" | "multimodal" | "web_search" | "health_nutrition" | "calendar" | "content_generation" | "email" | null,
   "reason": "почему это решение",
   "final_response": "итоговый ответ пользователю" (если action=finish)
 }
 
-Правила:
-- Если нужно сохранить инфо о питомце → call_agent: pet_memory
-- Если загружены файлы (документы) → call_agent: document_rag
-- Если загружены изображения/видео/аудио → call_agent: multimodal
-- Если нужна актуальная инфа И web_search_enabled=True → call_agent: web_search
-- Если вопросы о здоровье/питании → call_agent: health_nutrition
-- Если создать событие в календаре → call_agent: calendar
-- Если сгенерировать контент (изображение/график/аудио) → call_agent: content_generation
-- Если уже есть достаточно данных для ответа → finish
+Ключевое:
+- Ты не просто роутер: если данных недостаточно, задай уточняющий вопрос в final_response и заверши (action=finish).
+- Учитывай настройки чата:
+  - web_search_enabled=False → НЕ выбирай web_search. Скажи что веб-поиск отключён и предложи включить, либо продолжи без него.
+  - image_generation_enabled=False → НЕ выбирай content_generation (если запрос про генерацию). Скажи что генерация отключена.
+- Не вызывай агента повторно, если он уже был вызван и результата достаточно.
+- Если можно ответить сразу — finish и дай дружелюбный, полезный ответ.
 
 Отвечай ТОЛЬКО JSON, без пояснений."""
+
 
         context_messages.append(HumanMessage(content=decision_prompt))
 
         # Вызываем LLM
         llm = self._bind_llm(state.get("chat_settings"))
-        response = llm.invoke(context_messages)
-        decision_text = response.content if hasattr(response, 'content') else str(response)
+        try:
+            response = llm.invoke(context_messages)
+            decision_text = response.content if hasattr(response, 'content') else str(response)
+        except Exception as e:
+            logger.error(f"Supervisor LLM error: {e}")
+            state["final_response"] = (
+                "Модель сейчас недоступна. Попробуйте ещё раз позже или выберите другую модель в настройках."
+            )
+            state["next_agent"] = END
+            return state
 
         # Парсим JSON
         try:
@@ -279,9 +302,36 @@ class OrchestratorAgent:
 
         logger.info(f"Supervisor decision: {decision}")
 
+
+        settings = state.get("chat_settings") or {}
+        logger.info(f"Chat settings in supervisor: {settings}")
+
+        agent = decision.get("agent") if decision.get("action") == "call_agent" else None
+
+        if agent == "web_search" and not settings.get("web_search_enabled", False):
+            state["final_response"] = (
+                "В этом чате отключён веб-поиск. "
+                "Могу ответить без интернета, либо включи веб-поиск в настройках и повтори запрос."
+            )
+            state["next_agent"] = END
+            return state
+
+        if agent == "content_generation" and not settings.get("image_generation_enabled", False):
+            state["final_response"] = (
+                "В этом чате отключена генерация контента. "
+                "Включи генерацию в настройках — и я смогу сделать изображение/отчёт/график."
+            )
+            state["next_agent"] = END
+            return state
+
         # Применяем решение
         if decision.get("action") == "call_agent":
             next_agent = decision.get("agent")
+            if next_agent in called_agents:
+                logger.warning(f"Agent {next_agent} already called, finishing to avoid loop")
+                state["final_response"] = self._build_final_response(state, fallback_to_llm=True)
+                state["next_agent"] = END
+                return state
             state["next_agent"] = next_agent
             logger.info(f"Supervisor → routing to: {next_agent}")
         else:
@@ -290,7 +340,7 @@ class OrchestratorAgent:
                 state["final_response"] = decision["final_response"]
             else:
                 # Если LLM не вернул ответ, формируем сами
-                state["final_response"] = self._build_final_response(state)
+                state["final_response"] = self._build_final_response(state, fallback_to_llm=True)
 
             state["next_agent"] = END
             logger.info(f"Supervisor → END (response ready)")
@@ -316,6 +366,12 @@ class OrchestratorAgent:
                     "current_pet_id": state.get("current_pet_id"),
                     "current_pet_name": state.get("current_pet_name", ""),
                     "known_pets": state.get("known_pets", []),
+                    # ДОБАВЬ:
+                    "user_timezone": state["chat_settings"].get("user_timezone", "UTC"),  # если у тебя есть такое поле
+                    "current_pet_species": next(
+                        (p.get("species") for p in state.get("known_pets", []) if p.get("name") == state.get("current_pet_name")),
+                        ""
+                    ),
                 }
 
                 # Вызываем агента
@@ -405,7 +461,7 @@ class OrchestratorAgent:
 - Время: {now.strftime("%Y-%m-%d %H:%M")}
 {settings_info}{files_info}{called_info}
 
-**Доступные агенты (7):**
+**Доступные агенты (8):**
 
 1. **pet_memory** - БД питомцев и медицинские записи
    Когда: упоминание питомца, вопросы о питомцах, медицинские записи
@@ -428,6 +484,9 @@ class OrchestratorAgent:
 7. **content_generation** - Генерация изображений, графиков, аудио, отчетов
    Когда: генерация контента
 
+8. **email** - Отправка писем по email
+   Когда: пользователь просит отправить письмо/уведомление, переслать информацию
+
 **Твоя задача:**
 Анализируй запрос и результаты агентов. Решай:
 - Нужно ли вызвать ещё агента?
@@ -442,15 +501,11 @@ class OrchestratorAgent:
 
         return prompt
 
-    def _build_final_response(self, state: AgentState) -> str:
-        """Построить финальный ответ на основе результатов агентов"""
+    def _build_final_response(self, state: AgentState, fallback_to_llm: bool = False) -> str:
+        """Построить финальный ответ на основе результатов агентов. При необходимости — fallback к прямому ответу LLM."""
 
         agent_results = state.get("agent_results", [])
 
-        if not agent_results:
-            return "Обработка завершена"
-
-        # Собираем все результаты
         response_parts = []
 
         for result in agent_results:
@@ -471,7 +526,37 @@ class OrchestratorAgent:
                 except:
                     response_parts.append(output)
 
-        return "\n\n".join(response_parts) if response_parts else "Обработка завершена"
+        if response_parts:
+            return "\n\n".join(response_parts)
+
+        if fallback_to_llm:
+            return self._generate_direct_answer(state)
+
+        return "Ответ не сформирован. Попробуйте ещё раз."
+
+    def _generate_direct_answer(self, state: AgentState) -> str:
+        """Финальный ответ напрямую от LLM, если агенты не дали результата."""
+        try:
+            user_messages = [m for m in state["messages"] if isinstance(m, HumanMessage)]
+            last_user_message = user_messages[-1].content if user_messages else ""
+
+            # Добавляем краткий контекст о вызванных агентах/ошибках
+            notes = []
+            for res in state.get("agent_results", []):
+                if res.get("error"):
+                    notes.append(f"{res['agent']}: ошибка {res.get('output')}")
+            notes_text = "\n".join(notes) if notes else ""
+
+            prompt = f"""Ты ассистент по домашним животным. Дай полезный ответ пользователю.
+Запрос: {last_user_message}
+{('Предыдущие ошибки агентов:\\n' + notes_text) if notes_text else ''}"""
+
+            llm = self._bind_llm(state.get("chat_settings"))
+            response = llm.invoke([HumanMessage(content=prompt)])
+            return response.content if hasattr(response, "content") else str(response)
+        except Exception as e:
+            logger.error(f"Fallback LLM error: {e}")
+            return "Не удалось сформировать ответ. Попробуйте позже."
 
     async def run(
         self,

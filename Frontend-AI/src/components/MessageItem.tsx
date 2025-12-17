@@ -176,11 +176,21 @@ export function MessageItem({ message }: MessageItemProps) {
                     const fileName = file.filename || (file as any).file_name || file.file_id;
                     const url = file.url || '#';
                     const isImage = file.file_type === 'image' && !!file.url;
+                    const isAudio = file.file_type === 'audio' && !!file.url;
+                    const isVideo = file.file_type === 'video' && !!file.url;
 
                     return (
                       <div key={file.file_id} className="file-attachment">
                         {isImage ? (
                           <img src={url} alt={fileName} className="file-image" />
+                        ) : isAudio ? (
+                          <audio controls src={url} className="file-audio">
+                            Your browser does not support the audio element.
+                          </audio>
+                        ) : isVideo ? (
+                          <video controls src={url} className="file-video">
+                            Sorry, your browser doesn't support embedded videos.
+                          </video>
                         ) : (
                           <a href={url} target="_blank" rel="noopener noreferrer" className="file-link">
                             📎 {fileName}

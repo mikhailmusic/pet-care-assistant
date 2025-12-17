@@ -13,12 +13,14 @@ from app.agents.web_search_agent import WebSearchAgent
 from app.agents.health_nutrition_agent import HealthNutritionAgent
 from app.agents.calendar_agent import CalendarAgent
 from app.agents.content_generation_agent import ContentGenerationAgent
+from app.agents.email_agent import EmailAgent
 from app.agents.orchestrator_agent import OrchestratorAgent
 
 from app.services.pet_service import PetService
 from app.services.health_record_service import HealthRecordService
 from app.services.user_service import UserService
 from app.integrations.minio_service import MinioService
+from app.integrations.email_service import email_service
 from app.rag.rag_service import get_rag_service
 from app.integrations.gigachat_client import GigaChatClient
 
@@ -91,6 +93,13 @@ class AgentFactory:
             llm=self.llm,
         )
 
+    def create_email_agent(self) -> EmailAgent:
+        """Создать Email Agent"""
+        return EmailAgent(
+            email_service=email_service,
+            llm=self.llm,
+        )
+
     def create_orchestrator(self) -> OrchestratorAgent:
         """
         Создать Orchestrator Agent со всеми специализированными агентами.
@@ -106,6 +115,7 @@ class AgentFactory:
         health_nutrition_agent = self.create_health_nutrition_agent()
         calendar_agent = self.create_calendar_agent()
         content_generation_agent = self.create_content_generation_agent()
+        email_agent = self.create_email_agent()
 
         orchestrator = OrchestratorAgent(
             pet_memory_agent=pet_memory_agent,
@@ -115,10 +125,11 @@ class AgentFactory:
             health_nutrition_agent=health_nutrition_agent,
             calendar_agent=calendar_agent,
             content_generation_agent=content_generation_agent,
+            email_agent=email_agent,
             llm=self.llm,
         )
 
-        logger.info("Orchestrator created with 7 specialized agents")
+        logger.info("Orchestrator created with 8 specialized agents")
         return orchestrator
 
 

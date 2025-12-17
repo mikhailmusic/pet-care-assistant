@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, useRef, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { apiClient, apiErrorMessage } from '../services/api';
 import { useChatStore } from '../stores/chatStore';
 import type { ChatMessage, FileMetadata } from '../types';
@@ -12,9 +12,14 @@ interface MessageInputProps {
 export function MessageInput({ chatId }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<File[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isRecording, setIsRecording] = useState(false);
 
-  const { addMessage, updateMessage, removeMessage, isSending, setSending, currentChat } = useChatStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingMimeRef = useRef<string | null>(null);
+
+  const { addMessage, updateMessage, removeMessage, setMessages, isSending, setSending, currentChat } = useChatStore();
 
   const inferFileType = (mime: string): FileMetadata['file_type'] => {
     if (mime.startsWith('image/')) return 'image';
@@ -24,6 +29,79 @@ export function MessageInput({ chatId }: MessageInputProps) {
   };
 
   const nextTempId = useMemo(() => Date.now() * -1, []);
+  const preferredAudioMime = useMemo(() => {
+    if (typeof MediaRecorder === 'undefined') return null;
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/wav'];
+    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || null;
+  }, []);
+
+  const getAudioExtension = (mime: string | null) => {
+    if (!mime) return 'webm';
+    if (mime.includes('wav')) return 'wav';
+    if (mime.includes('ogg')) return 'ogg';
+    return 'webm';
+  };
+
+  const cleanupRecorder = () => {
+    recordingChunksRef.current = [];
+    recordingMimeRef.current = null;
+    if (mediaRecorderRef.current?.stream) {
+      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
+    }
+    mediaRecorderRef.current = null;
+  };
+
+  useEffect(() => {
+    return cleanupRecorder;
+  }, []);
+
+  const handleToggleRecording = async () => {
+    try {
+      if (isRecording) {
+        mediaRecorderRef.current?.stop();
+        setIsRecording(false);
+        return;
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        alert('Браузер не поддерживает запись аудио');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const options = preferredAudioMime ? { mimeType: preferredAudioMime } : undefined;
+      const mediaRecorder = new MediaRecorder(stream, options);
+      const recorderMime = preferredAudioMime || mediaRecorder.mimeType || 'audio/webm';
+      mediaRecorderRef.current = mediaRecorder;
+      recordingChunksRef.current = [];
+      recordingMimeRef.current = recorderMime;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const mimeType = recordingMimeRef.current || 'audio/webm';
+        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+        if (blob.size > 0) {
+          const extension = getAudioExtension(mimeType);
+          const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: mimeType });
+          setFiles((prev) => [...prev, file]);
+        }
+        cleanupRecorder();
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Failed to start recording:', err);
+      alert('Не удалось получить доступ к микрофону');
+      cleanupRecorder();
+      setIsRecording(false);
+    }
+  };
 
   const handleSubmit = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -81,6 +159,9 @@ export function MessageInput({ chatId }: MessageInputProps) {
       updateMessage(tempId, { files: uploadedMetas.length ? uploadedMetas : null });
 
       addMessage(assistantMessage);
+      // Перечитываем сообщения, чтобы временный id заменился на серверный
+      const refreshed = await apiClient.getChatMessages(chatId);
+      setMessages(refreshed);
       setContent('');
       setFiles([]);
     } catch (error) {
@@ -123,9 +204,18 @@ export function MessageInput({ chatId }: MessageInputProps) {
             type="button"
             className="file-attach-btn"
             onClick={() => fileInputRef.current?.click()}
-            title="Прикрепить файл"
+            title="Добавить вложения"
           >
             +
+          </button>
+          <button
+            type="button"
+            className={`file-attach-btn ${isRecording ? 'recording' : ''}`}
+            onClick={handleToggleRecording}
+            disabled={isSending}
+            title={isRecording ? 'Остановить запись' : 'Записать голосовое'}
+          >
+            {isRecording ? '■' : '🎤'}
           </button>
 
           <input
@@ -141,7 +231,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
             className="message-textarea"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Напишите сообщение или добавьте файл"
+            placeholder="Напишите сообщение или прикрепите файл"
             rows={1}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {

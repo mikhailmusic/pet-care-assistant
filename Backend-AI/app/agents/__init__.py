@@ -7,6 +7,7 @@ from app.agents.web_search_agent import WebSearchAgent
 from app.agents.health_nutrition_agent import HealthNutritionAgent
 from app.agents.calendar_agent import CalendarAgent
 from app.agents.content_generation_agent import ContentGenerationAgent
+from app.agents.email_agent import EmailAgent
 from app.agents.orchestrator_agent import OrchestratorAgent, OrchestratorResult
 from app.agents.agent_factory import AgentFactory, get_agent_factory
 
@@ -18,6 +19,7 @@ __all__ = [
     "HealthNutritionAgent",
     "CalendarAgent",
     "ContentGenerationAgent",
+    "EmailAgent",
     "OrchestratorAgent",
     "OrchestratorResult",
     "AgentFactory",

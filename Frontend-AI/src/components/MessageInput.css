@@ -80,6 +80,11 @@
   background: #dfe3e8;
 }
 
+.file-attach-btn.recording {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .message-textarea {
   flex: 1;
   min-height: 48px;
