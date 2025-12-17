@@ -76,10 +76,12 @@ class MessageService:
         files_json = await self._resolve_files(user_id=user_id, file_ids=message_dto.files)
         msg_type = _detect_message_type([FileMetadataDTO(**f) for f in files_json] if files_json else None)
 
+        content = message_dto.content or ""
+
         msg = Message(
             chat_id=chat_id,
             role=MessageRole.USER,
-            content=message_dto.content,
+            content=content,
             message_type=msg_type,
             files=files_json,
             metadata_json=None,
@@ -231,7 +233,7 @@ class MessageService:
             logger.info(f"Deleted {deleted_count} messages after {message_id} for regeneration")
 
         # Обновляем само сообщение
-        msg.content = content
+        msg.content = content or ""
 
         if file_ids is not None:
             files_json = await self._resolve_files(user_id=user_id, file_ids=file_ids)

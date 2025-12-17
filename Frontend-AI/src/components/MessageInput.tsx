@@ -11,7 +11,7 @@ interface MessageInputProps {
 
 export function MessageInput({ chatId }: MessageInputProps) {
   const [content, setContent] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<Array<{ file: File; previewUrl: string }>>([]);
   const [isRecording, setIsRecording] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -123,8 +123,30 @@ export function MessageInput({ chatId }: MessageInputProps) {
   };
 
   useEffect(() => {
-    return cleanupRecorder;
+    return () => {
+      cleanupRecorder();
+    };
   }, []);
+
+  const addFilesWithPreview = (newFiles: File[]) => {
+    setFiles((prev) => [
+      ...prev,
+      ...newFiles.map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+      })),
+    ]);
+  };
+
+  const removeFileAt = (index: number) => {
+    setFiles((prev) => {
+      const target = prev[index];
+      if (target) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
 
   const handleToggleRecording = async () => {
     try {
@@ -135,7 +157,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
       }
 
       if (!navigator.mediaDevices?.getUserMedia) {
-        alert('Браузер не поддерживает запись аудио');
+        alert('Ваш браузер не поддерживает запись аудио.');
         return;
       }
 
@@ -160,14 +182,14 @@ export function MessageInput({ chatId }: MessageInputProps) {
           try {
             if (blob.size > 0) {
               const wavFile = await blobToWavFile(blob);
-              setFiles((prev) => [...prev, wavFile]);
+              addFilesWithPreview([wavFile]);
             }
           } catch (conversionError) {
             console.warn('Falling back to recorded audio blob:', conversionError);
             if (blob.size > 0) {
               const extension = getAudioExtension(mimeType);
               const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: mimeType });
-              setFiles((prev) => [...prev, file]);
+              addFilesWithPreview([file]);
             }
           } finally {
             cleanupRecorder();
@@ -179,7 +201,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
       setIsRecording(true);
     } catch (err) {
       console.error('Failed to start recording:', err);
-      alert('Не удалось получить доступ к микрофону');
+      alert('Не удалось начать запись. Проверьте разрешения на микрофон.');
       cleanupRecorder();
       setIsRecording(false);
     }
@@ -193,12 +215,13 @@ export function MessageInput({ chatId }: MessageInputProps) {
     setSending(true);
 
     const tempId = nextTempId + Math.floor(Math.random() * 1000);
-    const optimisticFiles: FileMetadata[] = files.map((file) => ({
+    const optimisticFiles: FileMetadata[] = files.map(({ file, previewUrl }) => ({
       file_id: `temp-${file.name}-${file.lastModified}`,
       filename: file.name,
       file_type: inferFileType(file.type),
       file_size: file.size,
       mime_type: file.type,
+      url: previewUrl,
     }));
 
     const optimisticUser: ChatMessage = {
@@ -220,7 +243,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
     try {
       const uploadedMetas: FileMetadata[] = [];
       const fileIds: string[] = [];
-      for (const file of files) {
+      for (const { file } of files) {
         const uploaded = await apiClient.uploadFile(file);
         fileIds.push(uploaded.file_id);
         uploadedMetas.push({
@@ -241,10 +264,11 @@ export function MessageInput({ chatId }: MessageInputProps) {
       updateMessage(tempId, { files: uploadedMetas.length ? uploadedMetas : null });
 
       addMessage(assistantMessage);
-      // Перечитываем сообщения, чтобы временный id заменился на серверный
+      // чтобы синхронизировать сообщения, если id ассистента отличаются от локальных
       const refreshed = await apiClient.getChatMessages(chatId);
       setMessages(refreshed);
       setContent('');
+      files.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
       setFiles([]);
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -257,12 +281,8 @@ export function MessageInput({ chatId }: MessageInputProps) {
 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+      addFilesWithPreview(Array.from(e.target.files));
     }
-  };
-
-  const handleRemoveFile = (index: number) => {
-    setFiles(files.filter((_, i) => i !== index));
   };
 
   return (
@@ -270,14 +290,24 @@ export function MessageInput({ chatId }: MessageInputProps) {
       <div className="message-input-inner">
         {files.length > 0 && (
           <div className="selected-files">
-            {files.map((file, idx) => (
-              <div key={idx} className="file-chip">
-                <span>{file.name}</span>
-                <button type="button" onClick={() => handleRemoveFile(idx)}>
-                  ×
-                </button>
-              </div>
-            ))}
+            {files.map(({ file, previewUrl }, idx) => {
+              const isAudio = file.type.startsWith('audio/');
+              return (
+                <div key={`${file.name}-${file.lastModified}-${idx}`} className="file-chip">
+                  <div className="file-chip__info">
+                    <span>{file.name}</span>
+                    {isAudio && (
+                      <audio controls src={previewUrl} className="file-chip__audio">
+                        Your browser does not support the audio element.
+                      </audio>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => removeFileAt(idx)}>
+                    ×
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -286,7 +316,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
             type="button"
             className="file-attach-btn"
             onClick={() => fileInputRef.current?.click()}
-            title="Добавить вложения"
+            title="Прикрепить файлы"
           >
             +
           </button>
@@ -295,9 +325,9 @@ export function MessageInput({ chatId }: MessageInputProps) {
             className={`file-attach-btn ${isRecording ? 'recording' : ''}`}
             onClick={handleToggleRecording}
             disabled={isSending}
-            title={isRecording ? 'Остановить запись' : 'Записать голосовое'}
+            title={isRecording ? 'Остановить запись' : 'Начать запись голоса'}
           >
-            {isRecording ? '■' : '🎤'}
+            {isRecording ? '■' : '⏺'}
           </button>
 
           <input
@@ -313,7 +343,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
             className="message-textarea"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Напишите сообщение или прикрепите файл"
+            placeholder="Введите сообщение или прикрепите файлы"
             rows={1}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -324,7 +354,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
           />
 
           <button type="submit" className="send-btn" disabled={isSending || (!content.trim() && files.length === 0)}>
-            {isSending ? 'Отправляем…' : 'Отправить'}
+            {isSending ? 'Отправка…' : 'Отправить'}
           </button>
         </form>
 

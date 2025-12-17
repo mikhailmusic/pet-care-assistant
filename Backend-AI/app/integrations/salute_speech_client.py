@@ -1,4 +1,6 @@
 import uuid
+import base64
+import binascii
 import httpx
 from datetime import datetime, timedelta, timezone
 from typing import Optional, BinaryIO
@@ -15,13 +17,29 @@ class SaluteSpeechClient:
     TTS_URL = "https://smartspeech.sber.ru/rest/v1/text:synthesize"
 
     def __init__(self):
-        self.auth_token = settings.SALUTESPEECH_API_KEY
+        self.auth_token = (settings.SALUTESPEECH_API_KEY or "").strip()
         self.scope = "SALUTE_SPEECH_PERS"
+        self._basic_auth_value = self._prepare_basic_token(self.auth_token)
         
         self._access_token: Optional[str] = None
         self._token_expires_at: Optional[datetime] = None
         
         logger.info("SaluteSpeechService initialized")
+
+
+    def _prepare_basic_token(self, token: str) -> str:
+        if not token:
+            raise SaluteSpeechException("SALUTESPEECH_API_KEY is not configured")
+
+        raw = token.strip()
+        try:
+            # If token is already base64 - keep as is
+            base64.b64decode(raw, validate=True)
+            return raw
+        except binascii.Error:
+            encoded = base64.b64encode(raw.encode("utf-8")).decode("ascii")
+            logger.debug("SaluteSpeech API key auto-encoded to Base64 for Basic auth")
+            return encoded
 
 
     async def _get_access_token(self, force_refresh: bool = False) -> str:
@@ -35,7 +53,7 @@ class SaluteSpeechClient:
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "RqUID": rq_uid,
-            "Authorization": f"Basic {self.auth_token}"
+            "Authorization": f"Basic {self._basic_auth_value}"
         }
         
         payload = {"scope": self.scope}

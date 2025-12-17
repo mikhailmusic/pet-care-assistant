@@ -42,8 +42,8 @@
 .file-chip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 8px;
+  padding: 8px 12px;
   background: #eef2f7;
   border-radius: 16px;
   font-size: 13px;
@@ -52,13 +52,23 @@
 
 .file-chip button {
   background: transparent;
-  padding: 0 4px;
+  padding: 0 6px;
   font-size: 16px;
   color: #0f172a;
 }
 
 .file-chip button:hover {
   color: #ffd166;
+}
+
+.file-chip__info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-chip__audio {
+  width: 220px;
 }
 
 .message-input-form {

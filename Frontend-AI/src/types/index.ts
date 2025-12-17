@@ -118,12 +118,12 @@ export interface Message {
 }
 
 export interface MessageCreateRequest {
-  content: string;
+  content?: string;
   files?: string[] | null;
 }
 
 export interface MessageUpdateRequest {
-  content: string;
+  content?: string;
   files?: string[] | null;
 }
 
