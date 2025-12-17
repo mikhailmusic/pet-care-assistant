@@ -44,8 +44,8 @@
 .file-chip {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 10px 12px;
   background: #eef2f7;
   border-radius: 16px;
   font-size: 13px;
@@ -54,7 +54,7 @@
 
 .file-chip button {
   background: transparent;
-  padding: 0 6px;
+  padding: 2px 6px;
   font-size: 16px;
   color: #0f172a;
 }
@@ -67,10 +67,16 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  align-items: flex-start;
+}
+
+.file-chip__info .file-name {
+  font-weight: 600;
 }
 
 .file-chip__audio {
-  width: 220px;
+  width: 260px;
+  height: 32px;
 }
 
 .message-input-form {

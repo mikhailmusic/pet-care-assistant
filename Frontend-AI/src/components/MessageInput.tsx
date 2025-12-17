@@ -380,3 +380,4 @@ export function MessageInput({ chatId }: MessageInputProps) {
     </div>
   );
 }
+
