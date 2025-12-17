@@ -759,8 +759,9 @@ class ContentGenerationAgent:
    Используй: "Построй график", "Создай диаграмму", "Визуализируй"
    
 3. **text_to_speech** - Синтез речи (SaluteSpeech)
-   Используй: "Озвучь", "Создай аудио", "Прочитай голосом"
+   ОБЯЗАТЕЛЬНО используй этот инструмент для: "Озвучь", "Создай аудио", "Преобразуй в аудио", "text_to_speech"
    Голоса: Bys_24000, Nec_24000, May_24000, Ost_24000, Pon_24000
+   ВАЖНО: НЕ просто возвращай URL! ВЫЗОВИ инструмент text_to_speech!
    
 4. **generate_pdf_report** - PDF отчёт
    Используй: "Создай PDF", "Сохрани отчёт в PDF"
@@ -772,14 +773,9 @@ class ContentGenerationAgent:
 
 **Форматы данных для графиков:**
 
-Line/Bar/Scatter:
-{{{{"labels": ["День 1", "День 2", "День 3"], "values": [10, 15, 12]}}}}
-
-Pie (круговая диаграмма):
-{{{{"labels": ["Кошки", "Собаки", "Попугаи"], "values": [30, 50, 20]}}}}
-
-Table (таблица):
-{{{{"columns": ["Дата", "Вес (кг)", "Температура"], "data": [["01.12", "5.2", "38.5"], ["02.12", "5.3", "38.3"]]}}}}
+Line/Bar/Scatter: JSON с полями labels и values
+Pie (круговая диаграмма): JSON с полями labels и values
+Table (таблица): JSON с полями columns и data
 
 **Важно:**
 - Каждый инструмент возвращает minio_url для доступа к файлу
@@ -787,7 +783,11 @@ Table (таблица):
 - Для графиков добавляй title, x_label, y_label для читаемости
 - Можешь указать custom folder для организации файлов
 
-Создавай качественный контент!"""
+**КРИТИЧЕСКИ ВАЖНО:**
+После вызова инструмента (generate_image, text_to_speech, create_chart, generate_pdf_report, generate_docx_report):
+- НЕ ДОБАВЛЯЙ свой текст или комментарии
+- Верни ТОЛЬКО JSON, который вернул инструмент
+- Это важно для корректной обработки файлов на фронтенде"""
             
             prompt = ChatPromptTemplate.from_messages([
                 ("system", system_prompt),
@@ -805,8 +805,34 @@ Table (таблица):
             )
             
             result = await agent_executor.ainvoke({"input": user_message})
-            return result.get("output", '{"error": "No output"}')
-            
+            output = result.get("output", '{"error": "No output"}')
+
+            logger.info(f"ContentGenerationAgent raw output: {output[:500]}")
+
+            # Пытаемся извлечь чистый JSON из ответа (если LLM добавил текст)
+            try:
+                # Ищем JSON в ответе
+                if "{" in output and "}" in output:
+                    # Находим первый { и последний }
+                    start_idx = output.find("{")
+                    end_idx = output.rfind("}") + 1
+                    potential_json = output[start_idx:end_idx]
+
+                    # Пробуем распарсить
+                    parsed = json.loads(potential_json)
+
+                    # Проверяем, что это результат от наших инструментов
+                    if any(key in parsed for key in ["minio_url", "minio_object_name", "generated_at", "synthesized_at", "created_at"]):
+                        # Возвращаем чистый JSON
+                        clean_json = json.dumps(parsed, ensure_ascii=False, indent=2)
+                        logger.info(f"Extracted clean JSON from agent output")
+                        return clean_json
+            except Exception as e:
+                logger.warning(f"Failed to extract JSON from output: {e}")
+
+            logger.warning(f"Returning raw output without JSON extraction")
+            return output
+
         except Exception as e:
             logger.exception(f"ContentGenerationAgent error for user {user_id}")
             return json.dumps({"error": str(e)}, ensure_ascii=False)

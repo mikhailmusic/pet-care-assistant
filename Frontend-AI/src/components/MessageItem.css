@@ -222,3 +222,33 @@
 .btn-icon:hover {
   background: #dfe3e8;
 }
+
+/* Generated files styling */
+.message-files.generated {
+  margin-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.file-attachment.generated {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.audio-file,
+.image-file,
+.chart-file {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-info {
+  color: #6b7280;
+  font-size: 12px;
+  padding: 4px 8px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}

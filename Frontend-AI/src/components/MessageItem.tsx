@@ -203,6 +203,60 @@ export function MessageItem({ message }: MessageItemProps) {
                 </div>
               )}
 
+              {/* Отображаем сгенерированные файлы из metadata */}
+              {message.metadata_json?.generated_content && Array.isArray(message.metadata_json.generated_content) && (
+                <div className="message-files generated">
+                  {message.metadata_json.generated_content.map((genFile: any, index: number) => {
+                    const url = genFile.minio_url;
+                    const fileName = genFile.minio_object_name?.split('/').pop() || `file-${index}`;
+
+                    // Определяем тип по полям в JSON
+                    const isAudio = !!genFile.synthesized_at;
+                    const isImage = !!genFile.generated_at && !!genFile.prompt;
+                    const isPdf = fileName.endsWith('.pdf');
+                    const isDocx = fileName.endsWith('.docx');
+                    const isChart = !!genFile.chart_type;
+
+                    return (
+                      <div key={`gen-${index}`} className="file-attachment generated">
+                        {isAudio ? (
+                          <div className="audio-file">
+                            <audio controls src={url} className="file-audio">
+                              Your browser does not support the audio element.
+                            </audio>
+                            <div className="file-info">
+                              <small>🎤 {genFile.voice || 'Audio'}</small>
+                            </div>
+                          </div>
+                        ) : isImage ? (
+                          <div className="image-file">
+                            <img src={url} alt={genFile.prompt} className="file-image" />
+                            <div className="file-info">
+                              <small>🖼️ {genFile.prompt?.slice(0, 50)}...</small>
+                            </div>
+                          </div>
+                        ) : isChart ? (
+                          <div className="chart-file">
+                            <img src={url} alt={genFile.title} className="file-image" />
+                            <div className="file-info">
+                              <small>📊 {genFile.title || `${genFile.chart_type} chart`}</small>
+                            </div>
+                          </div>
+                        ) : (isPdf || isDocx) ? (
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="file-link">
+                            📄 {genFile.title || fileName}
+                          </a>
+                        ) : (
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="file-link">
+                            📎 {fileName}
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {message.processing_time_ms && (
                 <div className="message-meta">
                   <small>Ответ подготовлен за {message.processing_time_ms} мс</small>

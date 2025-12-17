@@ -352,11 +352,12 @@ class OrchestratorAgent:
             try:
                 if isinstance(output, str) and output.startswith("{"):
                     data = json.loads(output)
-                    
-                    # Для TTS результата
-                    if "minio_url" in data and "synthesized_at" in data:
-                        url = data.get("minio_url")
-                        response_parts.append(f"🔊 Аудиофайл готов: {url}")
+
+                    # Для TTS/изображений/отчетов - НЕ добавляем в текстовый ответ
+                    # Они уже в generated_files и будут переданы во фронтенд через metadata
+                    if "minio_url" in data and ("synthesized_at" in data or "generated_at" in data or "created_at" in data):
+                        # Пропускаем - файл уже в generated_files
+                        continue
                     # Для других JSON результатов
                     elif "analysis" in data:
                         response_parts.append(data["analysis"])
@@ -377,8 +378,29 @@ class OrchestratorAgent:
         
         # 4. Если нет результатов вообще
         if not response_parts:
-            response_parts.append("Не удалось обработать запрос. Попробуйте переформулировать.")
-        
+            # Проверяем, есть ли generated_files - если есть, добавляем информативное сообщение
+            generated_files = state.get("generated_files", [])
+            if generated_files:
+                # Формируем сообщение в зависимости от типа файлов
+                file_types = []
+                for gf in generated_files:
+                    if "synthesized_at" in gf:
+                        file_types.append("аудиофайл")
+                    elif "generated_at" in gf and "prompt" in gf:
+                        file_types.append("изображение")
+                    elif "created_at" in gf and "title" in gf:
+                        file_types.append("отчёт")
+                    elif "chart_type" in gf:
+                        file_types.append("график")
+
+                if file_types:
+                    files_text = ", ".join(set(file_types))
+                    response_parts.append(f"Готово! Создан {files_text}.")
+                else:
+                    response_parts.append("Файл успешно создан.")
+            else:
+                response_parts.append("Не удалось обработать запрос. Попробуйте переформулировать.")
+
         # Объединяем без дублирования
         final_response = "\n\n".join(response_parts)
         
@@ -639,22 +661,27 @@ JSON без markdown оборачивания:
                 # Обогащаем сообщение для content_generation если нужен TTS
                 agent_message = last_user_message
                 agent_results = state.get("agent_results", [])
-                
-                if agent_name == "content_generation" and agent_results:
-                    settings_dict = state.get("chat_settings", {})
-                    
-                    if settings_dict.get("voice_response_enabled"):
-                        # Собираем текст из предыдущих результатов
+
+                # Проверяем, просит ли пользователь явно создать аудио
+                tts_keywords = ["аудио", "озвучь", "голосом", "в виде аудио", "audio", "tts", "прочитай вслух", "аудиоверс"]
+                user_wants_audio = any(keyword in last_user_message.lower() for keyword in tts_keywords)
+
+                if agent_name == "content_generation" and user_wants_audio:
+                    # Собираем текст для озвучивания
+                    text_to_synthesize = None
+
+                    # Случай 1: Есть результаты от других агентов - озвучиваем их
+                    if agent_results:
                         previous_texts = []
-                        
+
                         for res in agent_results:
                             if not res.get("error"):
                                 output = res["output"]
-                                
+
                                 try:
                                     if isinstance(output, str) and output.startswith("{"):
                                         data = json.loads(output)
-                                        
+
                                         if "analysis" in data:
                                             previous_texts.append(data["analysis"])
                                         elif "text" in data:
@@ -666,17 +693,29 @@ JSON без markdown оборачивания:
                                         previous_texts.append(output)
                                 except:
                                     previous_texts.append(output)
-                        
+
                         if previous_texts:
-                            combined_text = "\n\n".join(previous_texts)
-                            
-                            # НОВЫЙ ПРОМПТ для content_generation
-                            agent_message = f"""Преобразуй следующий текст в аудио через text_to_speech:
+                            text_to_synthesize = "\n\n".join(previous_texts)
 
-{combined_text}
+                    # Случай 2: Нет результатов агентов - ищем предыдущее сообщение ассистента
+                    if not text_to_synthesize:
+                        ai_messages = [m for m in state["messages"] if isinstance(m, AIMessage)]
+                        if ai_messages:
+                            # Берём последнее сообщение ассистента
+                            text_to_synthesize = ai_messages[-1].content
 
-Используй подходящий голос (например, Nec_24000 или Bys_24000) и формат wav16.
-НЕ ДОБАВЛЯЙ ничего от себя, просто озвучь этот текст."""
+                    # Если нашли текст для озвучивания - формируем промпт
+                    if text_to_synthesize:
+                        agent_message = f"""ВАЖНО: Используй инструмент text_to_speech для создания аудиофайла!
+
+Текст для озвучивания:
+{text_to_synthesize}
+
+Параметры:
+- voice: May_24000
+- audio_format: wav16
+
+Вызови text_to_speech с этим текстом и верни ТОЛЬКО JSON результат от инструмента."""
                 
                 # Формируем контекст
                 context = {
@@ -712,30 +751,31 @@ JSON без markdown оборачивания:
                 # Сохраняем результат
                 if "agent_results" not in state:
                     state["agent_results"] = []
-                
+
                 state["agent_results"].append({
                     "agent": agent_name,
                     "output": result,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 })
-                
+
                 # НОВОЕ: сохраняем важную информацию в shared_context
                 try:
                     result_data = json.loads(result) if isinstance(result, str) else result
-                    
+
                     # Для email агента сохраняем email
                     if agent_name == "email" and "recipient_email" in result_data:
                         if "shared_context" not in state:
                             state["shared_context"] = {}
                         state["shared_context"]["last_email"] = result_data["recipient_email"]
-                    
+
                     # Извлекаем generated_files
                     if "minio_object_name" in result_data:
                         if "generated_files" not in state:
                             state["generated_files"] = []
                         state["generated_files"].append(result_data)
-                except:
-                    pass
+                        logger.info(f"Added file to generated_files: {result_data.get('minio_object_name')}")
+                except Exception as e:
+                    logger.warning(f"Could not parse result as JSON for agent {agent_name}: {e}, result preview: {str(result)[:200]}")
                 
                 logger.info(f"Agent node: {agent_name} completed")
                 
