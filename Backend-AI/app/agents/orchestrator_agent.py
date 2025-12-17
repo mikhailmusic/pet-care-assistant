@@ -287,24 +287,60 @@ class OrchestratorAgent:
         # Последнее сообщение пользователя
         context_messages.append(HumanMessage(content=last_user_message))
 
+        # Формируем инструкцию с учётом настроек
+        enabled_features = []
+        disabled_features = []
+
+        if settings.get("web_search_enabled"):
+            enabled_features.append("веб-поиск (используй активно для актуальной информации)")
+        else:
+            disabled_features.append("web_search")
+
+        if settings.get("image_generation_enabled"):
+            enabled_features.append("генерация изображений")
+        else:
+            disabled_features.append("content_generation (генерация изображений)")
+
+        if settings.get("voice_response_enabled"):
+            enabled_features.append("голосовой ответ (если пользователь просит аудио/голос)")
+
+        enabled_text = f"\n✅ Включено: {', '.join(enabled_features)}" if enabled_features else ""
+        disabled_text = f"\n❌ Отключено: {', '.join(disabled_features)}" if disabled_features else ""
+
         # Просим LLM принять решение
-        decision_prompt = """Проанализируй ситуацию и реши что делать дальше.
+        decision_prompt = f"""Проанализируй ситуацию и реши что делать дальше.
 
 Верни JSON:
-{
+{{
   "action": "call_agent" | "finish",
   "agent": "pet_memory" | "document_rag" | "multimodal" | "web_search" | "health_nutrition" | "calendar" | "content_generation" | "email" | null,
   "reason": "почему это решение",
   "final_response": "итоговый ответ пользователю" (если action=finish)
-}
+}}
 
-Ключевое:
-- Ты не просто роутер: если данных недостаточно, задай уточняющий вопрос в final_response и заверши (action=finish).
-- Учитывай настройки чата:
-  - web_search_enabled=False → НЕ выбирай web_search. Скажи что веб-поиск отключён и предложи включить, либо продолжи без него.
-  - image_generation_enabled=False → НЕ выбирай content_generation (если запрос про генерацию). Скажи что генерация отключена.
-- Не вызывай агента повторно, если он уже был вызван и результата достаточно.
-- Если можно ответить сразу — finish и дай дружелюбный, полезный ответ.
+**НАСТРОЙКИ ЧАТА:**{enabled_text}{disabled_text}
+
+**ПРАВИЛА:**
+1. **Веб-поиск (web_search):**
+   - Если web_search_enabled=True → ИСПОЛЬЗУЙ web_search для любой информации, требующей актуальных данных
+   - Если web_search_enabled=False → НЕ вызывай web_search, объясни что функция отключена
+
+2. **Генерация контента (content_generation):**
+   - Если image_generation_enabled=True → можешь использовать для генерации изображений/графиков
+   - Если image_generation_enabled=False → НЕ вызывай content_generation для генерации, объясни что отключено
+
+3. **Голосовой ответ (КРИТИЧЕСКИ ВАЖНО!):**
+   - Если voice_response_enabled=True И пользователь ЯВНО просит "в аудио", "голосом", "озвучь":
+     * Шаг 1: Получи информацию (вызови нужного агента: pet_memory, health_nutrition, и т.д.)
+     * Шаг 2: Вызови content_generation для преобразования ответа в аудио
+     * НЕ ЗАКАНЧИВАЙ текстовым ответом, если пользователь просил аудио!
+   - Если voice_response_enabled=False И пользователь просит аудио → объясни что голосовой ответ отключен
+
+4. **Общие правила:**
+   - Ты не просто роутер: если данных недостаточно, задай уточняющий вопрос в final_response и заверши (action=finish)
+   - Не вызывай агента повторно, если он уже был вызван и результата достаточно
+   - Если можно ответить сразу — finish и дай дружелюбный, полезный ответ
+   - ЦЕПОЧКИ АГЕНТОВ: если нужно сначала получить данные, а потом их обработать → вызывай агентов последовательно
 
 Отвечай ТОЛЬКО JSON, без пояснений."""
 
@@ -335,6 +371,7 @@ class OrchestratorAgent:
 
         agent = decision.get("agent") if decision.get("action") == "call_agent" else None
 
+        # Проверка разрешённых функций
         if agent == "web_search" and not settings.get("web_search_enabled", False):
             state["final_response"] = (
                 "В этом чате отключён веб-поиск. "
@@ -343,13 +380,15 @@ class OrchestratorAgent:
             state["next_agent"] = END
             return state
 
-        if agent == "content_generation" and not settings.get("image_generation_enabled", False):
-            state["final_response"] = (
-                "В этом чате отключена генерация контента. "
-                "Включи генерацию в настройках — и я смогу сделать изображение/отчёт/график."
-            )
-            state["next_agent"] = END
-            return state
+        # Проверяем что content_generation разрешён (хотя бы одна из функций)
+        if agent == "content_generation":
+            if not settings.get("image_generation_enabled", False) and not settings.get("voice_response_enabled", False):
+                state["final_response"] = (
+                    "В этом чате отключена генерация контента и голосовой ответ. "
+                    "Включи нужные функции в настройках — и я смогу создавать изображения, графики, аудио и отчёты."
+                )
+                state["next_agent"] = END
+                return state
 
         # Применяем решение
         if decision.get("action") == "call_agent":
@@ -385,6 +424,42 @@ class OrchestratorAgent:
                 user_messages = [m for m in state["messages"] if isinstance(m, HumanMessage)]
                 last_user_message = user_messages[-1].content if user_messages else ""
 
+                # Обогащаем сообщение для content_generation если нужен TTS
+                agent_message = last_user_message
+                agent_results = state.get("agent_results", [])
+
+                if agent_name == "content_generation" and agent_results:
+                    # Если есть результаты предыдущих агентов, формируем инструкцию для TTS
+                    settings = state.get("chat_settings", {})
+                    if settings.get("voice_response_enabled"):
+                        # Собираем результаты предыдущих агентов
+                        previous_outputs = []
+                        for res in agent_results:
+                            if not res.get("error"):
+                                output = res["output"]
+                                # Извлекаем текст из JSON если это JSON
+                                try:
+                                    if isinstance(output, str) and output.startswith("{"):
+                                        data = json.loads(output)
+                                        if "analysis" in data:
+                                            previous_outputs.append(data["analysis"])
+                                        elif "text" in data:
+                                            previous_outputs.append(data["text"])
+                                        else:
+                                            previous_outputs.append(output)
+                                    else:
+                                        previous_outputs.append(output)
+                                except:
+                                    previous_outputs.append(output)
+
+                        if previous_outputs:
+                            combined_text = "\n\n".join(previous_outputs)
+                            agent_message = f"""Озвучь следующий текст через text_to_speech:
+
+{combined_text}
+
+Используй подходящий голос (например, Nec_24000 или Bys_24000) и формат wav16."""
+
                 # Формируем контекст для агента
                 context = {
                     "chat_id": state["chat_id"],
@@ -393,8 +468,7 @@ class OrchestratorAgent:
                     "current_pet_id": state.get("current_pet_id"),
                     "current_pet_name": state.get("current_pet_name", ""),
                     "known_pets": state.get("known_pets", []),
-                    # ДОБАВЬ:
-                    "user_timezone": state["chat_settings"].get("user_timezone", "UTC"),  # если у тебя есть такое поле
+                    "user_timezone": state["chat_settings"].get("user_timezone", "UTC"),
                     "current_pet_species": next(
                         (p.get("species") for p in state.get("known_pets", []) if p.get("name") == state.get("current_pet_name")),
                         ""
@@ -409,7 +483,7 @@ class OrchestratorAgent:
                 try:
                     result = await agent.process(
                         user_id=state["user_id"],
-                        user_message=last_user_message,
+                        user_message=agent_message,
                         context=context
                     )
                 finally:
@@ -479,6 +553,7 @@ class OrchestratorAgent:
 **Настройки чата:**
 - Веб-поиск: {'✅' if settings.get('web_search_enabled') else '❌'}
 - Генерация изображений: {'✅' if settings.get('image_generation_enabled') else '❌'}
+- Голосовой ответ: {'✅' if settings.get('voice_response_enabled') else '❌'}
 - Модель: {settings.get('gigachat_model', 'GigaChat-Max')}
 """
 
@@ -508,8 +583,11 @@ class OrchestratorAgent:
 6. **calendar** - Google Calendar
    Когда: создание/просмотр событий, запись к ветеринару
 
-7. **content_generation** - Генерация изображений, графиков, аудио, отчетов
-   Когда: генерация контента
+7. **content_generation** - Генерация изображений, графиков, аудио (TTS), отчетов
+   Когда:
+   - Генерация изображений (если image_generation_enabled=True)
+   - Генерация голосового ответа / TTS (если voice_response_enabled=True И пользователь просит аудио)
+   - Создание графиков, отчетов
 
 8. **email** - Отправка писем по email
    Когда: пользователь просит отправить письмо/уведомление, переслать информацию
@@ -522,9 +600,18 @@ class OrchestratorAgent:
 **Стратегия:**
 - Автоматически сохраняй инфо о питомцах → pet_memory
 - Автоматически индексируй загруженные файлы → document_rag / multimodal
-- Цепочки агентов: pet_memory → health_nutrition, multimodal (OCR) → health_nutrition, и т.д.
+- Цепочки агентов:
+  * pet_memory → health_nutrition
+  * multimodal (OCR) → health_nutrition
+  * ЛЮБОЙ агент → content_generation (для TTS) если voice_response_enabled=True И пользователь просит голосовой ответ
 - Не вызывай агента повторно если он уже отработал
-- Когда есть достаточно данных - формируй финальный ответ"""
+- Когда есть достаточно данных - формируй финальный ответ
+
+**ВАЖНО про голосовой ответ:**
+Если voice_response_enabled=True И пользователь просит "в аудио формате", "голосом", "озвучь", "прочитай вслух":
+1. Сначала получи нужную информацию (вызови нужного агента если требуется)
+2. Потом вызови content_generation для преобразования ответа в аудио через TTS
+3. НЕ давай текстовый ответ, если пользователь просил аудио!"""
 
         return prompt
 
