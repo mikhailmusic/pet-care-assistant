@@ -353,11 +353,18 @@ class OrchestratorAgent:
                 if isinstance(output, str) and output.startswith("{"):
                     data = json.loads(output)
 
-                    # Для TTS/изображений/отчетов - НЕ добавляем в текстовый ответ
-                    # Они уже в generated_files и будут переданы во фронтенд через metadata
-                    if "minio_url" in data and ("synthesized_at" in data or "generated_at" in data or "created_at" in data):
-                        # Пропускаем - файл уже в generated_files
-                        continue
+                    # Для TTS/изображений/отчетов - формируем информативное сообщение
+                    # Файлы уже в generated_files и будут переданы во фронтенд через metadata
+                    if "minio_url" in data:
+                        if "synthesized_at" in data:
+                            # Для аудио - пропускаем, т.к. фронтенд показывает аудиоплеер
+                            continue
+                        elif "generated_at" in data and "prompt" in data:
+                            # Для изображений - пропускаем, т.к. фронтенд показывает изображение
+                            continue
+                        elif "created_at" in data and "title" in data:
+                            # Для отчётов - пропускаем, т.к. фронтенд показывает ссылку на скачивание
+                            continue
                     # Для других JSON результатов
                     elif "analysis" in data:
                         response_parts.append(data["analysis"])
@@ -483,8 +490,9 @@ class OrchestratorAgent:
 4. **web_search** - Поиск в интернете (DuckDuckGo)
    Когда: нужна актуальная информация И web_search_enabled=True
 
-5. **health_nutrition** - Анализ здоровья, питания, прививок
-   Когда: вопросы о здоровье, питании, расчет норм, анализ корма
+5. **health_nutrition** - Анализ здоровья, питания, прививок ДОМАШНИХ ЖИВОТНЫХ (кошки, собаки)
+   Когда: вопросы о здоровье ПИТОМЦЕВ, питании животных, расчет норм корма, анализ состава корма для животных
+   НЕ используй для: растений, садоводства, общих медицинских вопросов без привязки к питомцу
 
 6. **calendar** - Google Calendar
    Когда: создание/просмотр событий, запись к ветеринару
@@ -555,6 +563,16 @@ Supervisor: {{"action": "call_agent", "agent": "multimodal", "reason": "созд
 ✅ ПРАВИЛЬНО:
 User: "Создай картинку кота"
 Supervisor: {{"action": "call_agent", "agent": "content_generation", "reason": "сгенерировать изображение кота через GigaChat"}}
+
+❌ НЕПРАВИЛЬНО:
+User: "Как часто поливать алоэ?"
+Supervisor: {{"action": "call_agent", "agent": "health_nutrition", "reason": "получение информации о частоте полива алоэ"}}
+
+✅ ПРАВИЛЬНО:
+User: "Как часто поливать алоэ?"
+Supervisor: {{"action": "call_agent", "agent": "web_search", "reason": "поиск информации об уходе за растением алоэ"}}
+(или если web_search отключен)
+Supervisor: {{"action": "finish", "reason": "вопрос о растениях, не о питомцах - не относится к компетенции системы"}}
 
 ❌ НЕПРАВИЛЬНО:
 User: "А можешь это сообщение в виде аудио создать?"

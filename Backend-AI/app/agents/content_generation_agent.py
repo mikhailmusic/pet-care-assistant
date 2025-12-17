@@ -787,7 +787,23 @@ Table (таблица): JSON с полями columns и data
 После вызова инструмента (generate_image, text_to_speech, create_chart, generate_pdf_report, generate_docx_report):
 - НЕ ДОБАВЛЯЙ свой текст или комментарии
 - Верни ТОЛЬКО JSON, который вернул инструмент
-- Это важно для корректной обработки файлов на фронтенде"""
+- НЕ УПРОЩАЙ JSON! Верни ВСЕ поля, которые вернул инструмент
+- НЕ изменяй структуру JSON! Верни его ТОЧНО как есть
+- Это важно для корректной обработки файлов на фронтенде
+
+Пример ПРАВИЛЬНОГО ответа после вызова generate_image:
+{{{{
+  "generated_at": "2025-12-18T01:45:20.098622+00:00",
+  "prompt": "милый домашний кот...",
+  "width": 1024,
+  "height": 1024,
+  "minio_object_name": "generated/images/image_20251218_014520.png-...",
+  "minio_url": "http://localhost:9000/...",
+  "file_size_bytes": 153337
+}}}}
+
+НЕПРАВИЛЬНО (НЕ делай так):
+{{{{"minio_url": "http://localhost:9000/..."}}}}"""
             
             prompt = ChatPromptTemplate.from_messages([
                 ("system", system_prompt),
@@ -809,6 +825,20 @@ Table (таблица): JSON с полями columns и data
 
             logger.info(f"ContentGenerationAgent raw output: {output[:500]}")
 
+            # НОВОЕ: Пытаемся получить оригинальный вывод инструмента из intermediate_steps
+            # Это предотвращает упрощение JSON от LLM
+            intermediate_steps = result.get("intermediate_steps", [])
+            if intermediate_steps:
+                # Берём последний вызов инструмента
+                last_action, last_output = intermediate_steps[-1]
+
+                # Проверяем, что это один из наших инструментов генерации контента
+                tool_name = getattr(last_action, 'tool', None)
+                if tool_name in ['generate_image', 'text_to_speech', 'create_chart', 'generate_pdf_report', 'generate_docx_report']:
+                    # Используем ОРИГИНАЛЬНЫЙ вывод инструмента
+                    logger.info(f"Using original tool output from intermediate_steps (tool: {tool_name})")
+                    output = last_output
+
             # Пытаемся извлечь чистый JSON из ответа (если LLM добавил текст)
             try:
                 # Ищем JSON в ответе
@@ -823,9 +853,17 @@ Table (таблица): JSON с полями columns и data
 
                     # Проверяем, что это результат от наших инструментов
                     if any(key in parsed for key in ["minio_url", "minio_object_name", "generated_at", "synthesized_at", "created_at"]):
+                        # ВАЖНО: Проверяем, что JSON содержит все необходимые поля
+                        # Если есть minio_url, но НЕТ minio_object_name - это упрощённая версия от LLM
+                        if "minio_url" in parsed and "minio_object_name" not in parsed:
+                            logger.error(f"LLM returned simplified JSON without minio_object_name! This will break file handling.")
+                            logger.error(f"Simplified JSON: {potential_json[:200]}")
+                            # Возвращаем как есть, но логируем проблему
+                            return json.dumps(parsed, ensure_ascii=False, indent=2)
+
                         # Возвращаем чистый JSON
                         clean_json = json.dumps(parsed, ensure_ascii=False, indent=2)
-                        logger.info(f"Extracted clean JSON from agent output")
+                        logger.info(f"Extracted clean JSON from agent output with minio_object_name")
                         return clean_json
             except Exception as e:
                 logger.warning(f"Failed to extract JSON from output: {e}")
