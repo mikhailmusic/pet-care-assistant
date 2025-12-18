@@ -17,14 +17,43 @@ from app.integrations.minio_service import MinioService
 from app.utils.exceptions import MinIOException, FileNotFoundException, AuthorizationException
 
 
-def _infer_file_type(mime_type: str) -> str:
+def _infer_file_type(mime_type: str, filename: Optional[str] = None) -> str:
+    """
+    Определить тип файла по MIME-типу и расширению.
+
+    Args:
+        mime_type: MIME-тип файла
+        filename: Имя файла (опционально, для fallback по расширению)
+
+    Returns:
+        Тип файла: "image", "video", "audio", или "document"
+    """
     mt = (mime_type or "").lower()
+
+    # Попытка 1: Определение по MIME-типу
     if mt.startswith("image/"):
         return "image"
     if mt.startswith("video/"):
         return "video"
     if mt.startswith("audio/"):
         return "audio"
+
+    # Попытка 2: Если MIME-тип неизвестен, пробуем определить по расширению
+    if filename and mt in ("application/octet-stream", "binary/octet-stream", ""):
+        ext = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ""
+
+        # Изображения
+        if ext in ('jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif'):
+            return "image"
+
+        # Видео
+        if ext in ('mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm', 'm4v', 'mpg', 'mpeg'):
+            return "video"
+
+        # Аудио
+        if ext in ('mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus'):
+            return "audio"
+
     return "document"
 
 
@@ -48,7 +77,7 @@ class FileService:
             content = await file.read()
             file_size = len(content)
             mime_type = file.content_type or "application/octet-stream"
-            file_type = _infer_file_type(mime_type)
+            file_type = _infer_file_type(mime_type, file.filename)
 
             # MinioService.upload_file ожидает BinaryIO => используем BytesIO
             from io import BytesIO
@@ -108,11 +137,12 @@ class FileService:
         url = await self.minio.get_file_url(file_id)
 
         mime_type = stat.get("content_type") or "application/octet-stream"
-        file_type = _infer_file_type(mime_type)
+        filename = stat.get("original_filename") or file_id.split("/")[-1]
+        file_type = _infer_file_type(mime_type, filename)
 
         return FileMetadataDTO(
             file_id=file_id,
-            file_name=stat.get("original_filename") or file_id.split("/")[-1],
+            file_name=filename,
             file_type=file_type,
             mime_type=mime_type,
             file_size=int(stat.get("size") or 0),
