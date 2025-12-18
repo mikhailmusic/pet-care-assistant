@@ -53,9 +53,9 @@ def _get_minio_service() -> MinioService:
     return service
 
 
-async def _get_file_from_ref(file_ref: Optional[str]) -> tuple[BinaryIO, str]:
+async def _get_file_from_ref(file_ref: Optional[str]) -> tuple[BinaryIO, str, str]:
     """
-    Returns: (file_object(BytesIO), filename)
+    Returns: (file_object(BytesIO), filename, mime_type)
     """
     ctx = _get_context()
     minio_service = _get_minio_service()
@@ -69,6 +69,7 @@ async def _get_file_from_ref(file_ref: Optional[str]) -> tuple[BinaryIO, str]:
         file_info = ctx.uploaded_files[0]
         object_name = file_info.get("object_name") or file_info.get("file_id")
         filename = file_info.get("filename") or file_info.get("file_name", "unknown")
+        mime_type = file_info.get("mime_type", "application/octet-stream")
     else:
         # Случай 2: file_ref указан - ищем файл по object_name или file_id
         file_info = next(
@@ -81,13 +82,29 @@ async def _get_file_from_ref(file_ref: Optional[str]) -> tuple[BinaryIO, str]:
             # Найден файл в uploaded_files - используем его object_name
             object_name = file_info.get("object_name") or file_info.get("file_id")
             filename = file_info.get("filename") or file_info.get("file_name", "unknown")
+            mime_type = file_info.get("mime_type", "application/octet-stream")
         else:
             # Файл не найден в uploaded_files - используем file_ref как есть (может быть полный путь)
             object_name = file_ref
             filename = file_ref.split("/")[-1] if "/" in file_ref else file_ref
+            mime_type = "application/octet-stream"
 
     if not object_name:
         raise ValueError("Не удалось определить object_name файла")
+
+    # Если MIME-тип неизвестен, определяем по расширению
+    if mime_type == "application/octet-stream":
+        ext = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ""
+        mime_map = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'png': 'image/png', 'gif': 'image/gif',
+            'bmp': 'image/bmp', 'webp': 'image/webp',
+            'mp4': 'video/mp4', 'avi': 'video/x-msvideo',
+            'mov': 'video/quicktime', 'mkv': 'video/x-matroska',
+            'mp3': 'audio/mpeg', 'wav': 'audio/wav',
+            'ogg': 'audio/ogg', 'flac': 'audio/flac',
+        }
+        mime_type = mime_map.get(ext, "application/octet-stream")
 
     logger.info(f"Attempting to download file with object_name={object_name}")
     file_object = await minio_service.download_file(object_name)
@@ -96,9 +113,9 @@ async def _get_file_from_ref(file_ref: Optional[str]) -> tuple[BinaryIO, str]:
     file_object.seek(0)
 
     size = len(file_object.getbuffer())
-    logger.info(f"Loaded file: {filename} ({size} bytes), object_name={object_name}")
+    logger.info(f"Loaded file: {filename} ({size} bytes), mime_type={mime_type}, object_name={object_name}")
 
-    return file_object, filename
+    return file_object, filename, mime_type
 
 
 # ============================================================================
@@ -136,16 +153,17 @@ async def analyze_image(
     """
     try:
         ctx = _get_context()
-        
-        # Получаем файл
-        file_object, filename = await _get_file_from_ref(file_ref)
-        
+
+        # Получаем файл с MIME-типом
+        file_object, filename, mime_type = await _get_file_from_ref(file_ref)
+
         # Анализируем через GigaChat Vision
         analysis = await gigachat_client.vision_analysis(
             file=file_object,
             filename=filename,
             prompt=prompt,
-            temperature=temperature
+            temperature=temperature,
+            mime_type=mime_type
         )
         
         result = {
@@ -201,7 +219,7 @@ async def ocr_image(
         ctx = _get_context()
         
         # Получаем файл
-        file_object, filename = await _get_file_from_ref(file_ref)
+        file_object, filename, mime_type = await _get_file_from_ref(file_ref)
         
         # Формируем промпт в зависимости от режима
         if mode == "plain":
@@ -298,7 +316,7 @@ async def transcribe_audio(
         ctx = _get_context()
         
         # Получаем файл
-        file_object, filename = await _get_file_from_ref(file_ref)
+        file_object, filename, mime_type = await _get_file_from_ref(file_ref)
         audio_data = file_object.read()
         
         # Определяем параметры аудио из формата
@@ -395,7 +413,7 @@ async def analyze_video(
         ctx = _get_context()
         
         # Получаем файл
-        file_object, filename = await _get_file_from_ref(file_ref)
+        file_object, filename, mime_type = await _get_file_from_ref(file_ref)
         video_data = file_object.read()
         
         # Сохраняем временно для обработки
@@ -444,7 +462,7 @@ async def analyze_video(
                         "frame_number": idx,
                         "timestamp_sec": round(timestamp, 2)
                     })
-                    frames_data.append((frame_bytes, f"frame_{idx}.jpg"))
+                    frames_data.append((frame_bytes, f"frame_{idx}.jpg", "image/jpeg"))
             
             cap.release()
             

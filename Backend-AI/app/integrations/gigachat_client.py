@@ -96,12 +96,46 @@ class GigaChatClient:
             raise GigaChatException(f"Ошибка streaming генерации: {e}")
         
 
-    async def vision_analysis(self,file: BinaryIO,filename: str,prompt: str,temperature: Optional[float] = None,) -> str:
+    async def vision_analysis(
+        self,
+        file: BinaryIO,
+        filename: str,
+        prompt: str,
+        temperature: Optional[float] = None,
+        mime_type: Optional[str] = None,
+    ) -> str:
         try:
             file.seek(0)
-            uploaded_file = await asyncio.to_thread(self.llm.upload_file, file)
+
+            # Если MIME-тип не указан, пытаемся определить по расширению
+            if not mime_type or mime_type == "application/octet-stream":
+                ext = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ""
+                mime_map = {
+                    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                    'png': 'image/png', 'gif': 'image/gif',
+                    'bmp': 'image/bmp', 'webp': 'image/webp',
+                }
+                mime_type = mime_map.get(ext, "image/jpeg")  # Fallback на image/jpeg
+
+            # Создаем имитацию UploadFile с правильным content_type
+            from io import BytesIO
+
+            class FileWithMime:
+                def __init__(self, file_obj, name, content_type):
+                    self.file = file_obj
+                    self.name = name
+                    self.content_type = content_type
+
+                def read(self, size=-1):
+                    return self.file.read(size)
+
+                def seek(self, pos, whence=0):
+                    return self.file.seek(pos, whence)
+
+            file_with_mime = FileWithMime(file, filename, mime_type)
+            uploaded_file = await asyncio.to_thread(self.llm.upload_file, file_with_mime)
             file_id = uploaded_file.id_
-            logger.info(f"File '{filename}' uploaded to GigaChat with ID: {file_id}")
+            logger.info(f"File '{filename}' (mime={mime_type}) uploaded to GigaChat with ID: {file_id}")
 
             # 2. Формируем сообщение с прикрепленным файлом
             message = HumanMessage(
@@ -109,7 +143,9 @@ class GigaChatClient:
                 additional_kwargs={"attachments": [file_id]},
             )
 
-            llm = self.llm
+            vision_model = "GigaChat-2-Pro"   # или "GigaChat-2-Max"
+
+            llm = self.llm.bind(model=vision_model)
             if temperature is not None:
                 llm = llm.bind(temperature=temperature)
 
@@ -130,28 +166,62 @@ class GigaChatClient:
                 raise GigaChatException(
                     "Превышено время ожидания ответа от GigaChat. Попробуйте загрузить изображение меньшего размера."
                 )
+            elif "Model does not support image" in error_msg or "does not support" in error_msg:
+                raise GigaChatException(
+                    "Модель не поддерживает анализ изображений. Используется модель GigaChat-Pro-Vision."
+                )
             raise GigaChatException(f"Ошибка анализа изображения: {e}")
 
     async def vision_analysis_multiple(
-        self, files: List[tuple[BinaryIO, str]],  # [(file, filename), ...]
-        prompt: str, temperature: Optional[float] = None, ) -> str:
+        self,
+        files: List[tuple[BinaryIO, str, str]],  # [(file, filename, mime_type), ...]
+        prompt: str,
+        temperature: Optional[float] = None,
+    ) -> str:
         try:
             file_ids = []
-            for file, filename in files:
+            for file, filename, mime_type in files:
                 file.seek(0)
-                uploaded_file = await asyncio.to_thread(self.llm.upload_file, file)
+
+                # Если MIME-тип неизвестен, определяем по расширению
+                if not mime_type or mime_type == "application/octet-stream":
+                    ext = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ""
+                    mime_map = {
+                        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                        'png': 'image/png', 'gif': 'image/gif',
+                        'bmp': 'image/bmp', 'webp': 'image/webp',
+                    }
+                    mime_type = mime_map.get(ext, "image/jpeg")
+
+                # Создаем файл с MIME-типом
+                class FileWithMime:
+                    def __init__(self, file_obj, name, content_type):
+                        self.file = file_obj
+                        self.name = name
+                        self.content_type = content_type
+
+                    def read(self, size=-1):
+                        return self.file.read(size)
+
+                    def seek(self, pos, whence=0):
+                        return self.file.seek(pos, whence)
+
+                file_with_mime = FileWithMime(file, filename, mime_type)
+                uploaded_file = await asyncio.to_thread(self.llm.upload_file, file_with_mime)
                 file_ids.append(uploaded_file.id_)
-                logger.info(f"Uploaded: {filename} -> {uploaded_file.id_}")
+                logger.info(f"Uploaded: {filename} (mime={mime_type}) -> {uploaded_file.id_}")
             
             message = HumanMessage(
                 content=prompt,
                 additional_kwargs={"attachments": file_ids},
             )
-            
-            llm = self.llm
+
+            vision_model = "GigaChat-2-Pro"   # или "GigaChat-2-Max"
+
+            llm = self.llm.bind(model=vision_model)
             if temperature is not None:
                 llm = llm.bind(temperature=temperature)
-            
+
             response = await llm.ainvoke([message])
             
             logger.info(f"Vision analysis completed for {len(file_ids)} files")
@@ -168,6 +238,10 @@ class GigaChatClient:
             elif "timeout" in error_msg.lower():
                 raise GigaChatException(
                     "Превышено время ожидания ответа от GigaChat. Попробуйте загрузить изображения меньшего размера."
+                )
+            elif "Model does not support image" in error_msg or "does not support" in error_msg:
+                raise GigaChatException(
+                    "Модель не поддерживает анализ изображений. Используется модель GigaChat-Pro-Vision."
                 )
             raise GigaChatException(f"Ошибка анализа изображений: {e}")
 
