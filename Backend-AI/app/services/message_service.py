@@ -61,7 +61,14 @@ class MessageService:
         resolved: List[Dict[str, Any]] = []
         for fid in file_ids:
             meta = await self.file_service.get_file_metadata(user_id=user_id, file_id=fid)
-            resolved.append(meta.model_dump())
+            file_dict = meta.model_dump()
+            # Добавляем object_name для агентов (если его нет)
+            if "object_name" not in file_dict:
+                file_dict["object_name"] = fid
+            # Переименовываем file_name в filename для совместимости с агентами
+            if "file_name" in file_dict and "filename" not in file_dict:
+                file_dict["filename"] = file_dict["file_name"]
+            resolved.append(file_dict)
         return resolved
 
     async def create_user_message(
