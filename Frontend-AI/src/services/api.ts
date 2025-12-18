@@ -57,12 +57,9 @@ class APIClient {
 
   // Auth
   async login(data: LoginRequest): Promise<AuthResponse> {
-    const formData = new FormData();
-    formData.append('username', data.email);
-    formData.append('password', data.password);
-
-    const response = await this.client.post<AuthResponse>('/auth/login', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    const response = await this.client.post<AuthResponse>('/auth/login', {
+      email: data.email,
+      password: data.password,
     });
 
     localStorage.setItem('access_token', response.data.access_token);

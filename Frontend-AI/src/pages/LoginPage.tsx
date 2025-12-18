@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { apiClient } from '../services/api';
+import { apiClient, apiErrorMessage } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import '../styles/AuthPage.css';
 
@@ -23,7 +23,7 @@ export function LoginPage() {
       setUser(response.user);
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Не удалось войти. Проверьте email и пароль.');
+      setError(apiErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
