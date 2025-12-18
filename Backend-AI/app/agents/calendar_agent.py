@@ -132,15 +132,22 @@ async def list_calendar_events(
     """
     try:
         ctx = _get_context()
-        
+
         # Определяем временной диапазон
         if not time_min:
             dt_min = datetime.now(timezone.utc)
         else:
             dt_min = _parse_datetime(time_min, ctx.user_timezone)
-        
+
         if not time_max:
-            dt_max = datetime.now(timezone.utc) + timedelta(days=30)
+            # Умная логика: если time_min указан в начале дня (00:00:00),
+            # то time_max = конец того же дня, иначе +30 дней
+            if dt_min.hour == 0 and dt_min.minute == 0 and dt_min.second == 0:
+                # Запрос событий на конкретный день
+                dt_max = dt_min.replace(hour=23, minute=59, second=59)
+            else:
+                # Общий поиск вперёд
+                dt_max = datetime.now(timezone.utc) + timedelta(days=30)
         else:
             dt_max = _parse_datetime(time_max, ctx.user_timezone)
         
@@ -541,7 +548,7 @@ class CalendarAgent:
 - Можно указать несколько уведомлений: reminder_minutes=[5, 30, 60]
 
 
-Правила обработки дат:
+**Правила обработки дат:**
 - "завтра" → {(now + timedelta(days=1)).strftime("%Y-%m-%d")}
 - "послезавтра" → {(now + timedelta(days=2)).strftime("%Y-%m-%d")}
 - "через неделю" → {(now + timedelta(days=7)).strftime("%Y-%m-%d")}
@@ -549,13 +556,26 @@ class CalendarAgent:
 - Формат datetime: YYYY-MM-DDTHH:MM:SS
 
 
-**Примеры:**
+**КРИТИЧНО для list_calendar_events:**
+При поиске событий на конкретный день ВСЕГДА указывай оба параметра:
+- time_min: начало дня (00:00:00)
+- time_max: конец дня (23:59:59)
+
+Примеры для list_calendar_events:
+- "события на завтра" → list_calendar_events(time_min="{tomorrow}T00:00:00", time_max="{tomorrow}T23:59:59")
+- "что у меня послезавтра" → list_calendar_events(time_min="{day_after}T00:00:00", time_max="{day_after}T23:59:59")
+- "события на сегодня" → list_calendar_events(time_min="{now.strftime("%Y-%m-%d")}T00:00:00", time_max="{now.strftime("%Y-%m-%d")}T23:59:59")
+
+НИКОГДА не указывай только time_min для поиска событий на конкретный день - это вернёт все события на 30 дней вперёд!
+
+
+**Примеры для create_calendar_event:**
 
 1. "Встреча завтра в 15:00, напомни за 20 и за 5 минут" →
    create_calendar_event(title="Встреча", start_datetime="{tomorrow}T15:00:00", reminder_minutes=[20, 5])
 
 2. "Ветеринар послезавтра в 10:00 на 30 минут, напомни за 50 минут" →
-   create_calendar_event(title="Ветеринар", start_datetime="{day_after}T10:00:00", 
+   create_calendar_event(title="Ветеринар", start_datetime="{day_after}T10:00:00",
                          end_datetime="{day_after}T10:30:00", reminder_minutes=[50])
 
 При создании событий всегда используй имя питомца в названии, если оно указано. Добавляй другие параметры события, если они присутствуют

@@ -239,29 +239,45 @@ class OrchestratorAgent:
                 return state
         
         # Применяем решение
-        if decision.get("action") == "call_agent":
+        if decision.get("action") == "respond":
+            # ПРЯМОЙ ОТВЕТ супервизора (для простых запросов)
+            message = decision.get("message", "Не удалось обработать запрос.")
+
+            # Добавляем ответ в результаты как будто он от агента
+            if "agent_results" not in state:
+                state["agent_results"] = []
+            state["agent_results"].append({
+                "agent": "supervisor",
+                "output": message,
+                "error": False,
+            })
+
+            state["next_agent"] = "finalize"
+            logger.info(f"Supervisor → direct response: {message[:50]}...")
+
+        elif decision.get("action") == "call_agent":
             next_agent = decision.get("agent")
-            
+
             # Предотвращаем повторные вызовы
             if next_agent in called_agents:
                 logger.warning(f"Agent {next_agent} already called, finishing")
                 state["next_agent"] = "finalize"
                 return state
-            
+
             state["next_agent"] = next_agent
-            
+
             # НОВОЕ: сохраняем контекст для следующего агента
             if decision.get("context_note"):
                 if "shared_context" not in state:
                     state["shared_context"] = {}
                 state["shared_context"]["last_note"] = decision.get("context_note")
-            
+
             logger.info(f"Supervisor → routing to: {next_agent}")
         else:
             # Завершаем работу
             state["next_agent"] = "finalize"
             logger.info(f"Supervisor → finalize")
-        
+
         return state
     
     def _extract_result_summary(self, output: str) -> str:
@@ -529,8 +545,20 @@ class OrchestratorAgent:
             
             decision = json.loads(decision_text.strip())
             return decision
+        except json.JSONDecodeError as e:
+            # Показываем фрагмент текста вокруг ошибки для диагностики
+            start = max(0, e.pos - 50)
+            end = min(len(decision_text), e.pos + 50)
+            context = decision_text[start:end]
+            logger.error(
+                f"Failed to parse decision as JSON: {e}\n"
+                f"Position: {e.pos}, Line: {e.lineno}, Column: {e.colno}\n"
+                f"Context around error: ...{context}...\n"
+                f"Full text preview: {decision_text[:200]}"
+            )
+            return {"action": "finish", "reason": "parse error"}
         except Exception as e:
-            logger.error(f"Failed to parse decision: {e}, text: {decision_text}")
+            logger.error(f"Failed to parse decision: {e}, text: {decision_text[:200]}")
             return {"action": "finish", "reason": "parse error"}
     
     def _create_agent_node(self, agent_name: str, agent):
@@ -544,12 +572,17 @@ class OrchestratorAgent:
                 last_user_message = user_messages[-1].content if user_messages else ""
                 
                 # Обогащаем сообщение для content_generation если нужен TTS
+                # или для email agent если нужно отправить предыдущий ответ
                 agent_message = last_user_message
                 agent_results = state.get("agent_results", [])
 
                 # Проверяем, просит ли пользователь явно создать аудио
                 tts_keywords = ["аудио", "озвучь", "голосом", "в виде аудио", "audio", "tts", "прочитай вслух", "аудиоверс"]
                 user_wants_audio = any(keyword in last_user_message.lower() for keyword in tts_keywords)
+
+                # Проверяем, просит ли пользователь отправить последний ответ на email
+                email_last_response_keywords = ["последний ответ", "твой ответ", "этот ответ", "твой последний", "предыдущий ответ"]
+                user_wants_last_response = any(keyword in last_user_message.lower() for keyword in email_last_response_keywords)
 
                 if agent_name == "content_generation" and user_wants_audio:
                     # Собираем текст для озвучивания
@@ -601,7 +634,53 @@ class OrchestratorAgent:
 - audio_format: wav16
 
 Вызови text_to_speech с этим текстом и верни ТОЛЬКО JSON результат от инструмента."""
-                
+
+                # Обогащаем для email agent если нужно отправить последний ответ
+                elif agent_name == "email" and user_wants_last_response:
+                    # Находим последнее сообщение ассистента
+                    text_to_send = None
+
+                    # Случай 1: Есть результаты от других агентов
+                    if agent_results:
+                        previous_texts = []
+                        for res in agent_results:
+                            if not res.get("error"):
+                                output = res["output"]
+                                try:
+                                    if isinstance(output, str) and output.startswith("{"):
+                                        data = json.loads(output)
+                                        if "analysis" in data:
+                                            previous_texts.append(data["analysis"])
+                                        elif "text" in data:
+                                            previous_texts.append(data["text"])
+                                        else:
+                                            previous_texts.append(json.dumps(data, ensure_ascii=False, indent=2))
+                                    else:
+                                        previous_texts.append(output)
+                                except:
+                                    previous_texts.append(output)
+
+                        if previous_texts:
+                            text_to_send = "\n\n".join(previous_texts)
+
+                    # Случай 2: Нет результатов агентов - ищем последнее сообщение ассистента
+                    if not text_to_send:
+                        ai_messages = [m for m in state["messages"] if isinstance(m, AIMessage)]
+                        if ai_messages:
+                            text_to_send = ai_messages[-1].content
+
+                    # Если нашли текст - добавляем в сообщение
+                    if text_to_send:
+                        agent_message = f"""{last_user_message}
+
+КОНТЕКСТ: Пользователь просит отправить последний ответ на email.
+Последний ответ ассистента:
+---
+{text_to_send}
+---
+
+Используй этот текст как body письма. Сформулируй подходящую тему (subject) на основе содержания."""
+
                 # Формируем контекст
                 context = {
                     "chat_id": state["chat_id"],
