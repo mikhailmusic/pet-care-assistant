@@ -420,6 +420,12 @@ def build_supervisor_system_prompt(
   "reason": "почему завершаем (достаточно данных / агент уже вызван / функция отключена)"
 }}
 
+[!] КРИТИЧЕСКИ ВАЖНО ДЛЯ action:
+- "action" ВСЕГДА должен быть либо "call_agent", либо "finish"
+- НИКОГДА не используй имя агента как значение для "action"
+- ПРАВИЛЬНО: {{"action": "call_agent", "agent": "multimodal"}}
+- НЕПРАВИЛЬНО: {{"action": "multimodal"}}
+
 Допустимые значения для "agent":
 - "pet_memory"
 - "document_rag"
@@ -598,6 +604,12 @@ web_search_enabled: False
   "action": "finish",
   "reason": "почему завершаем (достаточно данных / агент вызван / функция отключена)"
 }}
+
+[!] КРИТИЧЕСКИ ВАЖНО ДЛЯ action:
+- "action" ВСЕГДА должен быть либо "call_agent", либо "finish"
+- НИКОГДА не используй имя агента как значение для "action"
+- ПРАВИЛЬНО: {{"action": "call_agent", "agent": "multimodal"}}
+- НЕПРАВИЛЬНО: {{"action": "multimodal"}}
 
 Допустимые agent:
 pet_memory | document_rag | multimodal | web_search | health_nutrition | calendar | content_generation | email

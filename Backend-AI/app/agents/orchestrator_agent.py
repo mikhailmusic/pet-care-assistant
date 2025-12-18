@@ -204,7 +204,14 @@ class OrchestratorAgent:
         
         decision = self._parse_decision(decision_text)
         logger.info(f"Supervisor decision: {decision}")
-        
+
+        # ИСПРАВЛЕНИЕ: Если action = имя агента вместо "call_agent", исправляем
+        action = decision.get("action")
+        if action and action in self.agents.keys():
+            logger.warning(f"Supervisor returned agent name '{action}' as action, fixing to 'call_agent'")
+            decision["agent"] = action
+            decision["action"] = "call_agent"
+
         # Проверка разрешённых функций
         agent = decision.get("agent") if decision.get("action") == "call_agent" else None
         
