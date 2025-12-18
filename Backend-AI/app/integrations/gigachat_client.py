@@ -23,6 +23,7 @@ class GigaChatClient:
             model=default_model,
             verify_ssl_certs=settings.GIGACHAT_VERIFY_SSL_CERTS,
             temperature=default_temp,
+            timeout=60.0,  # Увеличен таймаут до 60 секунд для vision анализа
         )
 
         self.default_model = default_model
@@ -119,6 +120,16 @@ class GigaChatClient:
 
         except Exception as e:
             logger.error(f"GigaChat vision error: {e}")
+            # Обработка специфичных ошибок
+            error_msg = str(e)
+            if "429" in error_msg or "Too Many Requests" in error_msg:
+                raise GigaChatException(
+                    "Превышен лимит запросов к GigaChat API. Пожалуйста, подождите несколько минут и попробуйте снова."
+                )
+            elif "timeout" in error_msg.lower():
+                raise GigaChatException(
+                    "Превышено время ожидания ответа от GigaChat. Попробуйте загрузить изображение меньшего размера."
+                )
             raise GigaChatException(f"Ошибка анализа изображения: {e}")
 
     async def vision_analysis_multiple(
@@ -148,6 +159,16 @@ class GigaChatClient:
             
         except Exception as e:
             logger.error(f"GigaChat multiple vision error: {e}")
+            # Обработка специфичных ошибок
+            error_msg = str(e)
+            if "429" in error_msg or "Too Many Requests" in error_msg:
+                raise GigaChatException(
+                    "Превышен лимит запросов к GigaChat API. Пожалуйста, подождите несколько минут и попробуйте снова."
+                )
+            elif "timeout" in error_msg.lower():
+                raise GigaChatException(
+                    "Превышено время ожидания ответа от GigaChat. Попробуйте загрузить изображения меньшего размера."
+                )
             raise GigaChatException(f"Ошибка анализа изображений: {e}")
 
     async def generate_image(self,prompt: str,width: int = 1024,height: int = 1024,) -> str:

@@ -55,29 +55,41 @@ def _get_minio_service() -> MinioService:
 
 async def _get_file_from_ref(file_ref: Optional[str]) -> tuple[BinaryIO, str]:
     """
-    Returns: (file_object(BytesIO), filename, object_name)
+    Returns: (file_object(BytesIO), filename)
     """
     ctx = _get_context()
     minio_service = _get_minio_service()
 
+    logger.debug(f"_get_file_from_ref called with file_ref={file_ref}, uploaded_files count={len(ctx.uploaded_files)}")
+
     if not file_ref:
+        # Случай 1: file_ref не указан - берем первый файл
         if not ctx.uploaded_files:
             raise ValueError("Нет загруженных файлов. Укажи file_ref или загрузи файл.")
         file_info = ctx.uploaded_files[0]
         object_name = file_info.get("object_name") or file_info.get("file_id")
-        filename = file_info.get("filename", "unknown")
+        filename = file_info.get("filename") or file_info.get("file_name", "unknown")
     else:
+        # Случай 2: file_ref указан - ищем файл по object_name или file_id
         file_info = next(
             (f for f in ctx.uploaded_files
-             if f.get("object_name") == file_ref or f.get("file_id") == file_ref),
+             if f.get("object_name") == file_ref or f.get("file_id") == file_ref
+             or f.get("filename") == file_ref or f.get("file_name") == file_ref),
             None
         )
-        object_name = file_ref
-        filename = file_info.get("filename", "unknown") if file_info else "unknown"
+        if file_info:
+            # Найден файл в uploaded_files - используем его object_name
+            object_name = file_info.get("object_name") or file_info.get("file_id")
+            filename = file_info.get("filename") or file_info.get("file_name", "unknown")
+        else:
+            # Файл не найден в uploaded_files - используем file_ref как есть (может быть полный путь)
+            object_name = file_ref
+            filename = file_ref.split("/")[-1] if "/" in file_ref else file_ref
 
     if not object_name:
         raise ValueError("Не удалось определить object_name файла")
 
+    logger.info(f"Attempting to download file with object_name={object_name}")
     file_object = await minio_service.download_file(object_name)
     if file_object is None:
         raise ValueError(f"Файл {object_name} не найден в хранилище")
@@ -610,12 +622,13 @@ class MultimodalAgent:
    Параметры: frame_count (сколько кадров), transcribe (извлечь аудио)
 
 **file_ref:**
-- Если не указан - автоматически берётся первый загруженный файл
-- Можно указать явно object_name из MinIO
+- НЕ УКАЗЫВАЙ file_ref если загружен только ОДИН файл - он возьмется автоматически!
+- Указывай file_ref только если загружено НЕСКОЛЬКО файлов и нужно выбрать конкретный
+- При указании используй полное значение object_name или file_id из списка загруженных файлов
 
 **Когда использовать какой инструмент:**
 
-ФОТО питомца:
+ФОТО питомца (file_ref НЕ указываем если файл один!):
 → analyze_image(prompt="Оцени состояние питомца, обрати внимание на...")
 
 ЭТИКЕТКА корма:
