@@ -147,7 +147,7 @@ class ChatService:
         for chat, message_count, last_message_at in rows:
             dto = ChatListItemDTO.model_validate(chat)
             dto.message_count = int(message_count or 0)
-            dto.last_message_at = last_message_at
+            dto.last_message_at = last_message_at or chat.created_at
             items.append(dto)
 
         logger.info(f"Listed {len(items)} chats for user {user_id} (skip={skip}, limit={limit})")

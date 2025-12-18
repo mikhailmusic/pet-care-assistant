@@ -56,7 +56,10 @@ class ChatRepository(BaseRepository[Chat]):
             )
             .where(Chat.user_id == user_id)
             .group_by(Chat.id)
-            .order_by(func.coalesce(last_msg_at, Chat.updated_at).desc())
+            .order_by(
+                func.coalesce(last_msg_at, Chat.created_at).desc(),
+                Chat.id.desc(),
+            )
             .offset(skip)
             .limit(limit)
         )
