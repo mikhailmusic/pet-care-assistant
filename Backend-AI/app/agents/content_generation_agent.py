@@ -834,9 +834,25 @@ Table (таблица): JSON с полями columns и data
 
                 # Проверяем, что это один из наших инструментов генерации контента
                 tool_name = getattr(last_action, 'tool', None)
+                logger.info(f"Last tool called: {tool_name}, output type: {type(last_output)}")
+
                 if tool_name in ['generate_image', 'text_to_speech', 'create_chart', 'generate_pdf_report', 'generate_docx_report']:
                     # Используем ОРИГИНАЛЬНЫЙ вывод инструмента
                     logger.info(f"Using original tool output from intermediate_steps (tool: {tool_name})")
+                    logger.info(f"Tool output preview: {str(last_output)[:200]}")
+
+                    # Проверяем, является ли вывод инструмента валидным JSON
+                    try:
+                        if isinstance(last_output, str):
+                            # Пробуем распарсить и сразу вернуть
+                            parsed = json.loads(last_output)
+                            if "minio_url" in parsed or "error" in parsed:
+                                logger.info(f"Returning validated tool JSON output directly")
+                                return json.dumps(parsed, ensure_ascii=False, indent=2)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Tool output is not valid JSON, will try to extract")
+
+                    # Если не JSON, используем как есть для дальнейшей обработки
                     output = last_output
 
             # Пытаемся извлечь чистый JSON из ответа (если LLM добавил текст)
@@ -866,7 +882,16 @@ Table (таблица): JSON с полями columns и data
                         logger.info(f"Extracted clean JSON from agent output with minio_object_name")
                         return clean_json
             except Exception as e:
-                logger.warning(f"Failed to extract JSON from output: {e}")
+                logger.warning(f"Failed to extract JSON from output: {e}, output preview: {output[:300]}")
+
+            # Последняя попытка: если вывод выглядит как текст, оборачиваем в JSON
+            # Это для случаев, когда LLM просто вернул текст без JSON
+            if not output.strip().startswith("{"):
+                logger.warning(f"Output is not JSON, wrapping in error response")
+                return json.dumps({
+                    "error": "Agent returned non-JSON output",
+                    "raw_output": output[:500]
+                }, ensure_ascii=False, indent=2)
 
             logger.warning(f"Returning raw output without JSON extraction")
             return output
