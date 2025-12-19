@@ -115,7 +115,7 @@ class GigaChatClient:
                     'png': 'image/png', 'gif': 'image/gif',
                     'bmp': 'image/bmp', 'webp': 'image/webp',
                 }
-                mime_type = mime_map.get(ext, "image/jpeg")  # Fallback на image/jpeg
+                mime_type = mime_map.get(ext, "image/jpeg")
 
             # Создаем имитацию UploadFile с правильным content_type
             from io import BytesIO
@@ -135,42 +135,52 @@ class GigaChatClient:
             file_with_mime = FileWithMime(file, filename, mime_type)
             uploaded_file = await asyncio.to_thread(self.llm.upload_file, file_with_mime)
             file_id = uploaded_file.id_
-            logger.info(f"File '{filename}' (mime={mime_type}) uploaded to GigaChat with ID: {file_id}")
-
-            # 2. Формируем сообщение с прикрепленным файлом
-            message = HumanMessage(
-                content=prompt,
-                additional_kwargs={"attachments": [file_id]},
-            )
-
-            vision_model = "GigaChat-2-Pro"   # или "GigaChat-2-Max"
-
-            llm = self.llm.bind(model=vision_model)
-            if temperature is not None:
-                llm = llm.bind(temperature=temperature)
-
-            response = await llm.ainvoke([message])
-
-            logger.info(f"Vision analysis completed for file_id: {file_id}")
-            return response.content
+            logger.info(f"File '{filename}' (mime={mime_type}) uploaded once with ID: {file_id}")
 
         except Exception as e:
-            logger.error(f"GigaChat vision error: {e}")
-            # Обработка специфичных ошибок
-            error_msg = str(e)
-            if "429" in error_msg or "Too Many Requests" in error_msg:
-                raise GigaChatException(
-                    "Превышен лимит запросов к GigaChat API. Пожалуйста, подождите несколько минут и попробуйте снова."
+            logger.error(f"Failed to upload file: {e}")
+            raise GigaChatException(f"Ошибка загрузки файла: {e}")
+
+        vision_models = ["GigaChat-2-Pro", "GigaChat-2-Max"]
+        last_error = None
+        
+        for model_name in vision_models:
+            try:
+                message = HumanMessage(
+                    content=prompt,
+                    additional_kwargs={"attachments": [file_id]},
                 )
-            elif "timeout" in error_msg.lower():
-                raise GigaChatException(
-                    "Превышено время ожидания ответа от GigaChat. Попробуйте загрузить изображение меньшего размера."
-                )
-            elif "Model does not support image" in error_msg or "does not support" in error_msg:
-                raise GigaChatException(
-                    "Модель не поддерживает анализ изображений. Используется модель GigaChat-Pro-Vision."
-                )
-            raise GigaChatException(f"Ошибка анализа изображения: {e}")
+
+                llm = self.llm.bind(model=model_name)
+                if temperature is not None:
+                    llm = llm.bind(temperature=temperature)
+
+                logger.info(f"Attempting vision analysis with model: {model_name}")
+                response = await llm.ainvoke([message])
+
+                logger.info(f"Vision analysis completed with {model_name} for file_id: {file_id}")
+                return response.content
+
+            except Exception as e:
+                logger.warning(f"Vision analysis failed with {model_name}: {e}")
+                last_error = e
+                error_msg = str(e)
+                
+                if "429" in error_msg or "Too Many Requests" in error_msg:
+                    raise GigaChatException(
+                        "Превышен лимит запросов к GigaChat API. Пожалуйста, подождите несколько минут и попробуйте снова."
+                    )
+                elif "timeout" in error_msg.lower():
+                    raise GigaChatException(
+                        "Превышено время ожидания ответа от GigaChat. Попробуйте загрузить изображение меньшего размера."
+                    )
+                
+                if model_name != vision_models[-1]:
+                    logger.info(f"Trying fallback model: {vision_models[vision_models.index(model_name) + 1]}")
+                    continue
+        
+        logger.error(f"All vision models failed. Last error: {last_error}")
+        raise GigaChatException(f"Ошибка анализа изображения: {last_error}")
 
     async def vision_analysis_multiple(
         self,
@@ -209,68 +219,98 @@ class GigaChatClient:
                 file_with_mime = FileWithMime(file, filename, mime_type)
                 uploaded_file = await asyncio.to_thread(self.llm.upload_file, file_with_mime)
                 file_ids.append(uploaded_file.id_)
-                logger.info(f"Uploaded: {filename} (mime={mime_type}) -> {uploaded_file.id_}")
+                logger.info(f"Uploaded once: {filename} (mime={mime_type}) -> {uploaded_file.id_}")
             
-            message = HumanMessage(
-                content=prompt,
-                additional_kwargs={"attachments": file_ids},
-            )
-
-            vision_model = "GigaChat-2-Pro"   # или "GigaChat-2-Max"
-
-            llm = self.llm.bind(model=vision_model)
-            if temperature is not None:
-                llm = llm.bind(temperature=temperature)
-
-            response = await llm.ainvoke([message])
-            
-            logger.info(f"Vision analysis completed for {len(file_ids)} files")
-            return response.content
+            logger.info(f"All {len(file_ids)} files uploaded successfully")
             
         except Exception as e:
-            logger.error(f"GigaChat multiple vision error: {e}")
-            # Обработка специфичных ошибок
-            error_msg = str(e)
-            if "429" in error_msg or "Too Many Requests" in error_msg:
-                raise GigaChatException(
-                    "Превышен лимит запросов к GigaChat API. Пожалуйста, подождите несколько минут и попробуйте снова."
-                )
-            elif "timeout" in error_msg.lower():
-                raise GigaChatException(
-                    "Превышено время ожидания ответа от GigaChat. Попробуйте загрузить изображения меньшего размера."
-                )
-            elif "Model does not support image" in error_msg or "does not support" in error_msg:
-                raise GigaChatException(
-                    "Модель не поддерживает анализ изображений. Используется модель GigaChat-Pro-Vision."
-                )
-            raise GigaChatException(f"Ошибка анализа изображений: {e}")
+            logger.error(f"Failed to upload files: {e}")
+            raise GigaChatException(f"Ошибка загрузки файлов: {e}")
+        
+        vision_models = ["GigaChat-2-Pro", "GigaChat-2-Max"]
+        last_error = None
+        
+        for model_name in vision_models:
+            try:
+                message = HumanMessage(content=prompt, additional_kwargs={"attachments": file_ids})
+
+                llm = self.llm.bind(model=model_name)
+                if temperature is not None:
+                    llm = llm.bind(temperature=temperature)
+
+                logger.info(f"Attempting multiple vision analysis with model: {model_name}")
+                response = await llm.ainvoke([message])
+                
+                logger.info(f"Multiple vision analysis completed with {model_name} for {len(file_ids)} files")
+                return response.content
+                
+            except Exception as e:
+                logger.warning(f"Multiple vision analysis failed with {model_name}: {e}")
+                last_error = e
+                error_msg = str(e)
+                
+                if "429" in error_msg or "Too Many Requests" in error_msg:
+                    raise GigaChatException(
+                        "Превышен лимит запросов к GigaChat API. Пожалуйста, подождите несколько минут и попробуйте снова."
+                    )
+                elif "timeout" in error_msg.lower():
+                    raise GigaChatException(
+                        "Превышено время ожидания ответа от GigaChat. Попробуйте загрузить изображения меньшего размера."
+                    )
+                
+                if model_name != vision_models[-1]:
+                    logger.info(f"Trying fallback model: {vision_models[vision_models.index(model_name) + 1]}")
+                    continue
+        
+        logger.error(f"All vision models failed. Last error: {last_error}")
+        raise GigaChatException(f"Ошибка анализа изображений: {last_error}")
 
     async def generate_image(self,prompt: str,width: int = 1024,height: int = 1024,) -> str:
-        try:
-            # LLM с поддержкой function calling для генерации изображений
-            llm_with_functions = self.llm.bind(function_call="auto")
+        image_gen_models = ["GigaChat-2-Pro", "GigaChat-2-Max"]
+        last_error = None
+        
+        for model_name in image_gen_models:
+            try:
+                llm_with_functions = self.llm.bind(model=model_name, function_call="auto")
 
-            message = HumanMessage(
-                content=f"Сгенерируй изображение: {prompt}. Размер: {width}x{height}"
-            )
+                message = HumanMessage(
+                    content=f"Сгенерируй изображение: {prompt}. Размер: {width}x{height}"
+                )
 
-            response = await llm_with_functions.ainvoke([message])
-            content = response.content
+                logger.info(f"Attempting image generation with model: {model_name}")
+                response = await llm_with_functions.ainvoke([message])
+                content = response.content
 
-            # Извлечение URL/ID изображения из ответа
-            img_match = re.search(r'<img\s+src="([^"]+)"', content)
-            
-            if img_match:
-                file_id = img_match.group(1)
-                logger.info(f"Image generated with file_id: {file_id}")
-                return file_id
+                img_match = re.search(r'<img\s+src="([^"]+)"', content)
+                
+                if img_match:
+                    file_id = img_match.group(1)
+                    logger.info(f"Image generated with {model_name}, file_id: {file_id}")
+                    return file_id
 
-            logger.warning("Image ID not found in content, returning raw content: " f"{content[:200]}...")    
-            return content
+                logger.warning(f"Image ID not found in content from {model_name}, returning raw content: {content[:200]}...")    
+                return content
 
-        except Exception as e:
-            logger.error(f"GigaChat image generation error: {e}")
-            raise GigaChatException(f"Ошибка генерации изображения: {e}")
+            except Exception as e:
+                logger.warning(f"Image generation failed with {model_name}: {e}")
+                last_error = e
+                error_msg = str(e)
+                
+                if "429" in error_msg or "Too Many Requests" in error_msg:
+                    raise GigaChatException(
+                        "Превышен лимит запросов к GigaChat API. Пожалуйста, подождите несколько минут и попробуйте снова."
+                    )
+                elif "timeout" in error_msg.lower():
+                    raise GigaChatException(
+                        "Превышено время ожидания ответа от GigaChat. Попробуйте уменьшить размер изображения."
+                    )
+                
+                if model_name != image_gen_models[-1]:
+                    logger.info(f"Trying fallback model: {image_gen_models[image_gen_models.index(model_name) + 1]}")
+                    continue
+        
+        logger.error(f"All image generation models failed. Last error: {last_error}")
+        raise GigaChatException(f"Ошибка генерации изображения: {last_error}")
 
     async def download_file(self, file_id: str) -> bytes:
         try:

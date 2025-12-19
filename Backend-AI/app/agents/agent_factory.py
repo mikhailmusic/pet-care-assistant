@@ -1,9 +1,3 @@
-# app/agents/agent_factory.py
-
-"""
-Фабрика для создания и инициализации всех агентов системы.
-"""
-
 from loguru import logger
 
 from app.agents.pet_memory_agent import PetMemoryAgent
@@ -40,14 +34,12 @@ class AgentFactory:
         self.user_service = user_service
         self.minio_service = minio_service
 
-        # Общий LLM для всех агентов
         self._llm_factory = create_llm_from_settings
         self.llm = self._llm_factory()
 
         logger.info("AgentFactory initialized")
 
     def create_pet_memory_agent(self) -> PetMemoryAgent:
-        """Создать Pet Memory Agent"""
         return PetMemoryAgent(
             pet_service=self.pet_service,
             health_record_service=self.health_record_service,
@@ -55,25 +47,21 @@ class AgentFactory:
         )
 
     def create_document_rag_agent(self, use_hybrid_retriever: bool = False) -> DocumentRAGAgent:
-        """Создать Document RAG Agent"""
         return DocumentRAGAgent(
             llm=self.llm,
             use_hybrid_retriever=use_hybrid_retriever,
         )
 
     def create_multimodal_agent(self) -> MultimodalAgent:
-        """Создать Multimodal Agent"""
         return MultimodalAgent(
             minio_service=self.minio_service,
             llm=self.llm,
         )
 
     def create_web_search_agent(self) -> WebSearchAgent:
-        """Создать Web Search Agent"""
         return WebSearchAgent(llm=self.llm)
 
     def create_health_nutrition_agent(self) -> HealthNutritionAgent:
-        """Создать Health & Nutrition Agent"""
         return HealthNutritionAgent(
             pet_service=self.pet_service,
             health_record_service=self.health_record_service,
@@ -81,32 +69,24 @@ class AgentFactory:
         )
 
     def create_calendar_agent(self) -> CalendarAgent:
-        """Создать Calendar Agent"""
         return CalendarAgent(
             user_service=self.user_service,
             llm=self.llm,
         )
 
     def create_content_generation_agent(self) -> ContentGenerationAgent:
-        """Создать Content Generation Agent"""
         return ContentGenerationAgent(
             minio=self.minio_service,
             llm=self.llm,
         )
 
     def create_email_agent(self) -> EmailAgent:
-        """Создать Email Agent"""
         return EmailAgent(
             email_service=email_service,
             llm=self.llm,
         )
 
     def create_orchestrator(self) -> OrchestratorAgent:
-        """
-        Создать Orchestrator Agent со всеми специализированными агентами.
-
-        Это главный агент, который координирует работу всех остальных.
-        """
         logger.info("Creating all agents for Orchestrator...")
 
         pet_memory_agent = self.create_pet_memory_agent()
@@ -135,7 +115,6 @@ class AgentFactory:
         return orchestrator
 
 
-# Singleton instance
 _agent_factory: AgentFactory = None
 
 
@@ -145,7 +124,6 @@ def get_agent_factory(
     user_service: UserService,
     minio_service: MinioService,
 ) -> AgentFactory:
-    """Получить или создать singleton AgentFactory"""
     global _agent_factory
 
     if _agent_factory is None:
