@@ -392,7 +392,92 @@ class OrchestratorAgent:
                         elif "created_at" in data and "title" in data:
                             # Для отчётов - пропускаем, т.к. фронтенд показывает ссылку на скачивание
                             continue
-                    # Для других JSON результатов
+                    # Для веб-поиска - формируем ответ на основе загруженных страниц
+                    elif "search_results" in data and "loaded_pages" in data:
+                        # Получаем данные
+                        search_results = data.get("search_results", [])
+                        loaded_pages = data.get("loaded_pages", [])
+                        summary = data.get("summary", "")
+
+                        # Формируем ответ на основе loaded_pages
+                        if loaded_pages:
+                            # Используем LLM для создания качественного ответа
+                            user_query = state.get("messages", [])[-1].content if state.get("messages") else ""
+
+                            # Собираем контент со всех загруженных страниц
+                            sources_content = []
+                            for idx, page in enumerate(loaded_pages[:3], 1):
+                                sources_content.append(
+                                    f"### Источник {idx}: {page.get('title', 'Без названия')}\n"
+                                    f"URL: {page.get('url', '')}\n\n"
+                                    f"{page.get('content', '')[:5000]}\n"
+                                )
+
+                            combined_content = "\n\n---\n\n".join(sources_content)
+
+                            # Формируем промпт для LLM
+                            synthesis_prompt = f"""Пользователь задал вопрос: "{user_query}"
+
+Ты получил следующую информацию из интернета:
+
+{combined_content}
+
+Твоя задача:
+1. Проанализируй информацию из всех источников
+2. Создай структурированный, понятный ответ на вопрос пользователя
+3. Выдели ключевые моменты и практические рекомендации
+4. НЕ копируй текст напрямую - переформулируй и структурируй
+5. В конце добавь раздел "Источники:" со ссылками
+
+Формат ответа:
+- Используй маркированные списки для структурирования
+- Выделяй важную информацию
+- Пиши понятным языком
+- Обязательно добавь ссылки на источники в конце"""
+
+                            try:
+                                # Используем LLM для синтеза ответа
+                                from langchain_core.messages import HumanMessage
+                                synthesis_result = self.llm.invoke([HumanMessage(content=synthesis_prompt)])
+                                synthesized_answer = synthesis_result.content
+
+                                # Добавляем ссылки на источники, если их нет
+                                if "Источники:" not in synthesized_answer and search_results:
+                                    sources_text = "\n\nИсточники:"
+                                    for sr in search_results[:5]:
+                                        sources_text += f"\n- [{sr.get('title', 'Без названия')}]({sr.get('url', '')})"
+                                    synthesized_answer += sources_text
+
+                                response_parts.append(synthesized_answer)
+
+                            except Exception as e:
+                                logger.error(f"Failed to synthesize answer from loaded pages: {e}")
+                                # Fallback: показываем краткую информацию
+                                fallback_parts = []
+                                if summary:
+                                    fallback_parts.append(summary)
+
+                                fallback_parts.append(f"\nНайдено {len(search_results)} результатов. Вот краткая информация:")
+
+                                for page in loaded_pages[:2]:
+                                    fallback_parts.append(f"\n**{page.get('title', 'Без названия')}**")
+                                    fallback_parts.append(page.get('content', '')[:500] + "...")
+
+                                if search_results:
+                                    sources_text = "\n\nИсточники:"
+                                    for sr in search_results[:5]:
+                                        sources_text += f"\n- [{sr.get('title', 'Без названия')}]({sr.get('url', '')})"
+                                    fallback_parts.append(sources_text)
+
+                                response_parts.append("\n".join(fallback_parts))
+                        else:
+                            # Если нет загруженных страниц, показываем результаты поиска
+                            if search_results:
+                                search_text = f"Найдено {len(search_results)} результатов:\n\n"
+                                for sr in search_results[:5]:
+                                    search_text += f"- [{sr.get('title', 'Без названия')}]({sr.get('url', '')})\n  {sr.get('snippet', '')}\n\n"
+                                response_parts.append(search_text)
+                    # Для старого формата с analysis (обратная совместимость)
                     elif "analysis" in data:
                         response_parts.append(data["analysis"])
                     elif "text" in data:
