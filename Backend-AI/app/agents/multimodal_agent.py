@@ -497,38 +497,73 @@ async def analyze_video(
                 try:
                     # Извлекаем аудио через ffmpeg
                     import subprocess
-                    
-                    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_audio:
-                        temp_audio_path = temp_audio.name
-                    
-                    # Конвертируем в PCM WAV 16kHz mono
-                    subprocess.run([
-                        'ffmpeg', '-i', temp_video_path,
-                        '-vn',  # Без видео
-                        '-acodec', 'pcm_s16le',  # PCM 16-bit
-                        '-ar', '16000',  # 16kHz
-                        '-ac', '1',  # Моно
-                        temp_audio_path,
-                        '-y'  # Перезаписать
-                    ], check=True, capture_output=True, stderr=subprocess.PIPE)
-                    
-                    # Читаем аудио
-                    with open(temp_audio_path, 'rb') as f:
-                        audio_data = f.read()
-                    
-                    # Транскрибируем
-                    audio_transcription = await salutespeech_service.speech_to_text(
-                        audio_data=audio_data,
-                        sample_rate=16000,
-                        bit_depth=16
-                    )
-                    
-                    logger.info(f"Video audio transcribed: {len(audio_transcription)} chars")
-                    
-                    # Удаляем временный аудио файл
-                    import os
-                    os.unlink(temp_audio_path)
-                    
+                    import shutil
+
+                    ffmpeg_path = None
+
+                    try:
+                        import imageio_ffmpeg
+                        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+                        logger.info(f"Using imageio-ffmpeg: {ffmpeg_path}")
+                    except ImportError:
+                        logger.debug("imageio-ffmpeg not installed, trying system ffmpeg")
+
+                    # Если imageio-ffmpeg нет, ищем системный ffmpeg
+                    if not ffmpeg_path:
+                        ffmpeg_path = shutil.which('ffmpeg')
+                        if ffmpeg_path:
+                            logger.info(f"Using system ffmpeg: {ffmpeg_path}")
+
+                    if not ffmpeg_path:
+                        logger.warning("ffmpeg not found in PATH and imageio-ffmpeg not installed")
+                        audio_transcription = "Транскрипция недоступна: ffmpeg не установлен"
+                    else:
+                        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_audio:
+                            temp_audio_path = temp_audio.name
+
+                        # Конвертируем в PCM WAV 16kHz mono
+                        result = subprocess.run([
+                            ffmpeg_path, '-i', temp_video_path,
+                            '-vn',  # Без видео
+                            '-acodec', 'pcm_s16le',  # PCM 16-bit
+                            '-ar', '16000',  # 16kHz
+                            '-ac', '1',  # Моно
+                            temp_audio_path,
+                            '-y'  # Перезаписать
+                        ], capture_output=True, text=True)
+
+                        if result.returncode != 0:
+                            logger.warning(f"ffmpeg failed: {result.stderr}")
+                            audio_transcription = "Транскрипция недоступна: не удалось извлечь аудио из видео (возможно, видео без звука)."
+                        else:
+                            # Читаем аудио
+                            with open(temp_audio_path, 'rb') as f:
+                                audio_data = f.read()
+
+                            # Проверяем что файл не пустой
+                            if len(audio_data) < 100:
+                                logger.warning("Audio file too small, video might have no audio track")
+                                audio_transcription = "Транскрипция недоступна: в видео отсутствует аудиодорожка."
+                            else:
+                                # Транскрибируем
+                                audio_transcription = await salutespeech_service.speech_to_text(
+                                    audio_data=audio_data,
+                                    sample_rate=16000,
+                                    bit_depth=16
+                                )
+
+                                logger.info(f"Video audio transcribed: {len(audio_transcription)} chars")
+
+                            # Удаляем временный аудио файл
+                            import os
+                            try:
+                                os.unlink(temp_audio_path)
+                            except:
+                                pass
+
+                except FileNotFoundError as e:
+                    logger.warning(f"ffmpeg not found: {e}")
+                    audio_transcription = "Транскрипция недоступна: ffmpeg не установлен. Установите: pip install imageio-ffmpeg"
                 except Exception as e:
                     logger.warning(f"Failed to transcribe video audio: {e}")
                     audio_transcription = f"Ошибка транскрипции: {str(e)}"
