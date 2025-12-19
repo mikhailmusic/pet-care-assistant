@@ -377,8 +377,8 @@ async def transcribe_audio(
 async def analyze_video(
     file_ref: Optional[str] = None,
     prompt: str = "Опиши поведение/симптомы на видео. Отдельно: что настораживает и какие следующие шаги.",
-    frame_count: int = 5,
-    transcribe: bool = False,
+    frame_count: int = 10,
+    transcribe: bool = True,
 ) -> str:
     """Анализировать видео (извлечение кадров + анализ через Vision).
     
@@ -391,8 +391,8 @@ async def analyze_video(
     Args:
         file_ref: Ссылка на видео файл. Если None - берёт первый загруженный
         prompt: Что анализировать на видео
-        frame_count: Количество кадров для извлечения (по умолчанию 5)
-        transcribe: Извлечь и транскрибировать аудио из видео
+        frame_count: Количество кадров для извлечения (по умолчанию 10)
+        transcribe: Извлечь и транскрибировать аудио из видео (по умолчанию True)
     
     Returns:
         JSON с анализом видео:
@@ -469,17 +469,26 @@ async def analyze_video(
             logger.info(f"Extracted {len(frames_data)} frames from video: {filename}")
             
             # Анализируем кадры через GigaChat Vision (multiple images)
-            analysis_prompt = f"""Проанализируй эти {len(frames_data)} кадров из видео.
+            analysis_prompt = f"""Проанализируй ПОДРОБНО эти {len(frames_data)} кадров из видео.
 
 {prompt}
 
-Кадры взяты равномерно по видео (длительность: {duration:.1f} сек).
-Опиши что происходит, обрати внимание на изменения между кадрами."""
+Видео длительностью {duration:.1f} сек. Кадры взяты равномерно на временных отметках:
+{chr(10).join([f"• Кадр {i+1}: {extracted_frames[i]['timestamp_sec']:.1f} сек" for i in range(len(extracted_frames))])}
+
+ВАЖНО:
+1. Опиши КАЖДЫЙ кадр отдельно - что на нём видно
+2. Укажи что МЕНЯЕТСЯ между кадрами (движения, действия, объекты)
+3. Опиши общую динамику и развитие событий
+4. Обрати внимание на детали: людей, объекты, текст на экране, презентации
+5. Если видна презентация/экран - опиши содержимое слайдов
+
+Дай максимально подробное и структурированное описание."""
             
             video_analysis = await gigachat_client.vision_analysis_multiple(
                 files=frames_data,
                 prompt=analysis_prompt,
-                temperature=0.3
+                temperature=0.5
             )
             
             # Транскрипция аудио если нужно
@@ -659,7 +668,9 @@ class MultimodalAgent:
 → transcribe_audio()
 
 ВИДЕО с питомцем:
-→ analyze_video(prompt="Опиши поведение, обрати внимание на...", frame_count=5)
+→ analyze_video(prompt="Опиши поведение, обрати внимание на...", frame_count=10, transcribe=True)
+  • frame_count - количество кадров (больше = детальнее, но дольше). Для коротких видео (< 1 мин) хватит 5-8, для длинных (> 5 мин) используй 10-15
+  • transcribe - извлечь и распознать аудио (True если на видео есть речь/звук)
 
 **Важно:**
 - Все инструменты возвращают JSON для оркестратора
