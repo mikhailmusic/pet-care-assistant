@@ -15,6 +15,7 @@ export function MessageInput({ chatId }: MessageInputProps) {
   const [isRecording, setIsRecording] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingMimeRef = useRef<string | null>(null);
@@ -137,6 +138,21 @@ export function MessageInput({ chatId }: MessageInputProps) {
       })),
     ]);
   }, []);
+
+  const resizeTextarea = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    const computed = window.getComputedStyle(textarea);
+    const maxHeight = Number.parseFloat(computed.maxHeight) || 0;
+    const nextHeight = maxHeight > 0 ? Math.min(textarea.scrollHeight, maxHeight) : textarea.scrollHeight;
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > nextHeight ? 'auto' : 'hidden';
+  }, []);
+
+  useEffect(() => {
+    resizeTextarea();
+  }, [content, resizeTextarea]);
 
   useEffect(() => {
     const listener = (event: Event) => {
@@ -353,9 +369,13 @@ export function MessageInput({ chatId }: MessageInputProps) {
           />
 
           <textarea
+            ref={textareaRef}
             className="message-textarea"
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => {
+              setContent(e.target.value);
+              requestAnimationFrame(resizeTextarea);
+            }}
             placeholder="Введите сообщение или прикрепите файлы"
             rows={1}
             onKeyDown={(e) => {

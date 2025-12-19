@@ -845,24 +845,31 @@ class PetMemoryAgent:
 **Срочность (urgency):**
 - low, medium, high, critical
 
+
 **Примеры использования:**
 
 1. "У меня кот Барсик, британец"
-   → create_pet_profile(name="Барсик", species="кошка", breed="британская")
+   → create_pet_profile(name="Барсик", species="кот", gender="самец", breed="британская")
 
-2. "Покажи всех моих питомцев"
+2. "У меня кошка Мурка"
+   → create_pet_profile(name="Мурка", species="кошка", gender="самка")
+
+3. "Это мой пёс Рекс"
+   → create_pet_profile(name="Рекс", species="собака", gender="самец")
+
+4. "Покажи всех моих питомцев"
    → list_user_pets()
 
-3. "Барсик весит 6 кг"
+5. "Барсик весит 6 кг"
    → update_pet_profile(pet_name="Барсик", weight_kg=6)
 
-4. "Барсик начал чихать"
+6. "Барсик начал чихать"
    → add_health_record(pet_name="Барсик", title="Чихание", record_type="symptom", symptoms="чихание", urgency="medium")
 
-5. "Покажи медицинские записи Барсика"
+7. "Покажи медицинские записи Барсика"
    → list_pet_health_records(pet_name="Барсик")
 
-6. "Запись 123 теперь решена"
+8. "Запись 123 теперь решена"
    → update_health_record(record_id=123, is_resolved=true)
 
 Будь точным и полезным!"""

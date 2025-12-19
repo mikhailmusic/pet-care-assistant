@@ -106,7 +106,8 @@
 .message-textarea {
   flex: 1;
   min-height: 48px;
-  max-height: 220px;
+  line-height: 22px;
+  max-height: 134px;
   padding: 12px 14px;
   border: 1px solid #d1d5db;
   border-radius: 12px;
@@ -115,6 +116,7 @@
   outline: none;
   background: #ffffff;
   color: #0f172a;
+  overflow-y: hidden;
 }
 
 .message-textarea:focus {
