@@ -175,14 +175,46 @@ class OrchestratorAgent:
                 AIMessage(content=f"[{agent_name}] {summary}")
             )
         
+        # ВАЖНО: Добавляем исходный запрос пользователя
+        # На первой итерации и на последующих - чтобы не забыть составные запросы
         context_messages.append(HumanMessage(content=last_user_message))
-        
+
         # НОВЫЙ ПРОМПТ ДЛЯ РЕШЕНИЯ
         decision_prompt = self._build_decision_prompt(
             settings=settings_dict,
             called_agents=called_agents,
         )
-        
+
+        # НОВОЕ: Если есть результаты агентов, напоминаем об ИСХОДНОМ запросе
+        if called_agents:
+            # Проверяем на составные запросы (email + audio, и т.д.)
+            compound_indicators = [
+                ("аудио", "в виде аудио", "в аудио формате", "озвучь", "голосом"),
+                ("email", "на почту", "письмо", "на email")
+            ]
+
+            detected_parts = []
+            for keywords in compound_indicators:
+                if any(kw in last_user_message.lower() for kw in keywords):
+                    detected_parts.append(keywords[0])
+
+            reminder = f"\n\n[!] НАПОМИНАНИЕ: Исходный запрос пользователя был:\n\"{last_user_message}\"\n"
+
+            if len(detected_parts) >= 2:
+                reminder += f"\n[!] ВНИМАНИЕ: Это СОСТАВНОЙ запрос! Обнаружены части: {', '.join(detected_parts)}\n"
+                reminder += f"Уже выполнены агенты: {', '.join(called_agents)}\n"
+                reminder += "Проверь, все ли части запроса выполнены! Если нет - вызови нужный агент!\n"
+
+                # Специфичные подсказки
+                if "аудио" in detected_parts and "content_generation" not in called_agents:
+                    reminder += "[!] Часть про АУДИО ещё НЕ выполнена! Нужно вызвать content_generation для TTS!\n"
+                if "email" in detected_parts and "email" not in called_agents:
+                    reminder += "[!] Часть про EMAIL ещё НЕ выполнена! Нужно вызвать email агента!\n"
+            else:
+                reminder += "Проверь, все ли части запроса выполнены!"
+
+            decision_prompt += reminder
+
         context_messages.append(HumanMessage(content=decision_prompt))
         
         llm = self._bind_llm(state.get("chat_settings"))
@@ -627,9 +659,44 @@ class OrchestratorAgent:
                 decision_text = decision_text.split("```json")[1].split("```")[0]
             elif "```" in decision_text:
                 decision_text = decision_text.split("```")[1].split("```")[0]
-            
-            decision = json.loads(decision_text.strip())
+
+            # НОВОЕ: Если LLM вернул несколько JSON объектов, берём только ПЕРВЫЙ
+            text = decision_text.strip()
+
+            # Находим первый { и соответствующую ему }
+            if "{" in text:
+                start_idx = text.find("{")
+                # Используем счётчик скобок для поиска конца ПЕРВОГО JSON объекта
+                brace_count = 0
+                end_idx = -1
+
+                for i in range(start_idx, len(text)):
+                    if text[i] == "{":
+                        brace_count += 1
+                    elif text[i] == "}":
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
+
+                if end_idx > start_idx:
+                    first_json = text[start_idx:end_idx]
+                    decision = json.loads(first_json)
+
+                    # Проверяем, был ли это случай с несколькими JSON
+                    remaining_text = text[end_idx:].strip()
+                    if remaining_text and remaining_text.startswith("{"):
+                        logger.warning(
+                            f"LLM returned multiple JSON objects! Using only the FIRST one. "
+                            f"First: {first_json[:100]}, Remaining: {remaining_text[:100]}"
+                        )
+
+                    return decision
+
+            # Fallback: пробуем парсить весь текст как есть
+            decision = json.loads(text)
             return decision
+
         except json.JSONDecodeError as e:
             # Показываем фрагмент текста вокруг ошибки для диагностики
             start = max(0, e.pos - 50)
@@ -679,7 +746,38 @@ class OrchestratorAgent:
 
                         for res in agent_results:
                             if not res.get("error"):
+                                agent_who_ran = res.get("agent", "")
                                 output = res["output"]
+
+                                # Специальная обработка для email агента
+                                if agent_who_ran == "email":
+                                    try:
+                                        # Обрабатываем токены GigaChat перед парсингом
+                                        if isinstance(output, str):
+                                            cleaned = output.replace("<|superquote|>", '"')
+
+                                            # Экранируем переносы строк в строковых значениях
+                                            import re
+                                            def escape_newlines_in_strings(match):
+                                                value = match.group(1)
+                                                value = value.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                                                return f'"{value}"'
+
+                                            cleaned = re.sub(r'"([^"]*)"', escape_newlines_in_strings, cleaned, flags=re.DOTALL)
+                                            data = json.loads(cleaned)
+                                        else:
+                                            data = output
+
+                                        if data.get("email_sent"):
+                                            # Формируем подтверждение об отправке письма
+                                            recipient = data.get("recipient_email", "")
+                                            subject = data.get("subject", "")
+                                            confirmation = f"Письмо успешно отправлено на {recipient} с темой \"{subject}\""
+                                            previous_texts.append(confirmation)
+                                            logger.info(f"TTS: prepared email confirmation: {confirmation}")
+                                            continue
+                                    except Exception as e:
+                                        logger.warning(f"Failed to parse email result for TTS: {e}")
 
                                 try:
                                     if isinstance(output, str) and output.startswith("{"):
@@ -709,16 +807,18 @@ class OrchestratorAgent:
 
                     # Если нашли текст для озвучивания - формируем промпт
                     if text_to_synthesize:
-                        agent_message = f"""ВАЖНО: Используй инструмент text_to_speech для создания аудиофайла!
+                        logger.info(f"TTS: preparing text (length={len(text_to_synthesize)}): {text_to_synthesize[:200]}...")
+                        agent_message = f"""Вызови инструмент text_to_speech со следующим текстом.
 
-Текст для озвучивания:
+ТЕКСТ ДЛЯ ОЗВУЧИВАНИЯ (передай его полностью в параметр text):
 {text_to_synthesize}
 
-Параметры:
+Параметры для text_to_speech:
+- text: (весь текст выше)
 - voice: May_24000
 - audio_format: wav16
 
-Вызови text_to_speech с этим текстом и верни ТОЛЬКО JSON результат от инструмента."""
+КРИТИЧЕСКИ ВАЖНО: Используй ВЕСЬ текст выше (от первого до последнего символа) в параметре 'text' при вызове text_to_speech. Верни ТОЛЬКО JSON результат от инструмента."""
 
                 # Обогащаем для email agent если нужно отправить последний ответ
                 elif agent_name == "email" and user_wants_last_response:
@@ -786,13 +886,32 @@ class OrchestratorAgent:
                 bound_llm = self._bind_llm(state.get("chat_settings"))
                 prev_llm = getattr(agent, "llm", None)
                 agent.llm = bound_llm
-                
+
                 try:
-                    result = await agent.process(
-                        user_id=state["user_id"],
-                        user_message=agent_message,
-                        context=context
-                    )
+                    # Для email агента добавляем историю разговора
+                    if agent_name == "email":
+                        # Конвертируем langchain messages в простой формат для email агента
+                        conversation_history = []
+                        for msg in state.get("messages", []):
+                            if hasattr(msg, "type"):
+                                role = "user" if msg.type == "human" else "assistant"
+                                conversation_history.append({
+                                    "role": role,
+                                    "content": msg.content
+                                })
+
+                        result = await agent.process(
+                            user_id=state["user_id"],
+                            user_message=agent_message,
+                            context=context,
+                            conversation_history=conversation_history
+                        )
+                    else:
+                        result = await agent.process(
+                            user_id=state["user_id"],
+                            user_message=agent_message,
+                            context=context
+                        )
                 finally:
                     if prev_llm is not None:
                         agent.llm = prev_llm
@@ -809,7 +928,21 @@ class OrchestratorAgent:
 
                 # НОВОЕ: сохраняем важную информацию в shared_context
                 try:
-                    result_data = json.loads(result) if isinstance(result, str) else result
+                    # Обрабатываем токены GigaChat перед парсингом
+                    if isinstance(result, str):
+                        cleaned_result = result.replace("<|superquote|>", '"')
+
+                        # Экранируем переносы строк в строковых значениях
+                        import re
+                        def escape_newlines_in_strings(match):
+                            value = match.group(1)
+                            value = value.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                            return f'"{value}"'
+
+                        cleaned_result = re.sub(r'"([^"]*)"', escape_newlines_in_strings, cleaned_result, flags=re.DOTALL)
+                        result_data = json.loads(cleaned_result)
+                    else:
+                        result_data = result
 
                     # Для email агента сохраняем email
                     if agent_name == "email" and "recipient_email" in result_data:
