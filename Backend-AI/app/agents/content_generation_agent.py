@@ -792,26 +792,44 @@ Table (таблица): JSON с полями columns и data
 6. После успешного вызова инструмента - НЕМЕДЛЕННО верни JSON результат, НЕ вызывай другие инструменты
 7. Один запрос = один вызов инструмента (если только пользователь явно не попросил несколько)
 
-После вызова инструмента (generate_image, text_to_speech, create_chart, generate_pdf_report, generate_docx_report):
-- НЕ ДОБАВЛЯЙ свой текст или комментарии
-- Верни ТОЛЬКО JSON, который вернул инструмент
-- НЕ УПРОЩАЙ JSON! Верни ВСЕ поля, которые вернул инструмент
-- НЕ изменяй структуру JSON! Верни его ТОЧНО как есть
-- Это важно для корректной обработки файлов на фронтенде
+**ИНСТРУКЦИЯ ПО ВОЗВРАТУ РЕЗУЛЬТАТА:**
+После того, как ты ВЫЗВАЛ инструмент (generate_image, text_to_speech, create_chart, generate_pdf_report, generate_docx_report), инструмент вернет тебе JSON.
+Твоя задача - СКОПИРОВАТЬ ЭТОТ JSON ПОЛНОСТЬЮ и вернуть его пользователю БЕЗ ИЗМЕНЕНИЙ.
 
-Пример ПРАВИЛЬНОГО ответа после вызова generate_image:
+ПРАВИЛА:
+- НЕ ДОБАВЛЯЙ свой текст, комментарии или объяснения
+- НЕ УПРОЩАЙ JSON! Копируй ВСЕ поля ТОЧНО как они есть
+- НЕ изменяй структуру! Если инструмент вернул 7 полей - верни все 7
+- НЕ создавай новый JSON - просто скопируй то, что вернул инструмент
+
+Пример:
+1. Ты вызвал text_to_speech
+2. Инструмент вернул:
 {{{{
-  "generated_at": "2025-12-18T01:45:20.098622+00:00",
-  "prompt": "милый домашний кот...",
-  "width": 1024,
-  "height": 1024,
-  "minio_object_name": "generated/images/image_20251218_014520.png-...",
-  "minio_url": "http://localhost:9000/...",
-  "file_size_bytes": 153337
+  "synthesized_at": "2025-12-20T14:48:37+00:00",
+  "text_preview": "Письмо успешно...",
+  "text_length": 96,
+  "voice": "May_24000",
+  "format": "wav16",
+  "minio_object_name": "generated/audio/tts_May_24000.wav",
+  "minio_url": "http://localhost:9000/petcare-files/generated/audio/tts.wav",
+  "file_size_bytes": 334316
 }}}}
 
-НЕПРАВИЛЬНО (НЕ делай так):
-{{{{"minio_url": "http://localhost:9000/..."}}}}"""
+3. Ты должен вернуть РОВНО ЭТО (все 8 полей):
+{{{{
+  "synthesized_at": "2025-12-20T14:48:37+00:00",
+  "text_preview": "Письмо успешно...",
+  "text_length": 96,
+  "voice": "May_24000",
+  "format": "wav16",
+  "minio_object_name": "generated/audio/tts_May_24000.wav",
+  "minio_url": "http://localhost:9000/petcare-files/generated/audio/tts.wav",
+  "file_size_bytes": 334316
+}}}}
+
+НЕПРАВИЛЬНО (НЕ делай так - это сломает систему):
+{{{{}}}} или {{{{"minio_url": "..."}}}} или {{{{"result": "success"}}}}"""
             
             prompt = ChatPromptTemplate.from_messages([
                 ("system", system_prompt),
@@ -826,16 +844,25 @@ Table (таблица): JSON с полями columns и data
                 verbose=settings.DEBUG,
                 handle_parsing_errors=True,
                 max_iterations=3,  # Ограничено до 3: 1 вызов инструмента + 1 возврат результата (+ 1 запас)
+                return_intermediate_steps=True,  # КРИТИЧЕСКИ ВАЖНО: возвращаем intermediate_steps
             )
-            
+
             result = await agent_executor.ainvoke({"input": user_message})
             output = result.get("output", '{"error": "No output"}')
 
             logger.info(f"ContentGenerationAgent raw output: {output[:500]}")
+            logger.info(f"ContentGenerationAgent result keys: {list(result.keys())}")
 
-            # НОВОЕ: Пытаемся получить оригинальный вывод инструмента из intermediate_steps
-            # Это предотвращает упрощение JSON от LLM
+            # КРИТИЧЕСКИ ВАЖНО: Пытаемся получить оригинальный вывод инструмента из intermediate_steps
+            # Это предотвращает упрощение JSON от LLM (когда GigaChat возвращает {} вместо полного JSON)
             intermediate_steps = result.get("intermediate_steps", [])
+            logger.info(f"Intermediate steps count: {len(intermediate_steps)}")
+
+            # Логируем структуру intermediate_steps для отладки
+            if intermediate_steps:
+                for i, step in enumerate(intermediate_steps):
+                    logger.info(f"Step {i}: {type(step)}, len={len(step) if isinstance(step, (list, tuple)) else 'N/A'}")
+
             if intermediate_steps:
                 # Берём последний вызов инструмента
                 last_action, last_output = intermediate_steps[-1]
@@ -855,8 +882,13 @@ Table (таблица): JSON с полями columns и data
                             # Пробуем распарсить и сразу вернуть
                             parsed = json.loads(last_output)
                             if "minio_url" in parsed or "error" in parsed:
-                                logger.info(f"Returning validated tool JSON output directly")
+                                logger.info(f"Returning validated tool JSON output directly from intermediate_steps")
                                 return json.dumps(parsed, ensure_ascii=False, indent=2)
+                        elif isinstance(last_output, dict):
+                            # Если вывод уже dict (не строка), используем его напрямую
+                            if "minio_url" in last_output or "error" in last_output:
+                                logger.info(f"Returning tool output dict directly from intermediate_steps")
+                                return json.dumps(last_output, ensure_ascii=False, indent=2)
                     except json.JSONDecodeError:
                         logger.warning(f"Tool output is not valid JSON, will try to extract")
 
@@ -875,6 +907,34 @@ Table (таблица): JSON с полями columns и data
                     # Пробуем распарсить
                     parsed = json.loads(potential_json)
 
+                    # Проверяем, не пустой ли JSON (GigaChat иногда возвращает {})
+                    if not parsed or len(parsed) == 0:
+                        logger.warning(f"LLM returned empty JSON {{}}, trying to get from intermediate_steps again")
+                        # Последняя попытка извлечь из intermediate_steps
+                        if intermediate_steps:
+                            for action, step_output in reversed(intermediate_steps):
+                                tool = getattr(action, 'tool', None)
+                                if tool in ['text_to_speech', 'generate_image', 'create_chart', 'generate_pdf_report', 'generate_docx_report']:
+                                    logger.info(f"Found tool output in intermediate_steps: {tool}")
+                                    if isinstance(step_output, str):
+                                        try:
+                                            return step_output  # Возвращаем как есть (уже JSON string)
+                                        except:
+                                            pass
+                                    elif isinstance(step_output, dict):
+                                        return json.dumps(step_output, ensure_ascii=False, indent=2)
+
+                        # НОВОЕ: Если intermediate_steps не помогли, пробуем найти вывод в логах AgentExecutor
+                        # Проверяем, есть ли в result другие ключи, которые могут содержать данные
+                        logger.warning(f"Empty JSON and no intermediate_steps. Checking result structure...")
+                        logger.warning(f"Available keys in result: {list(result.keys())}")
+
+                        # КРИТИЧЕСКАЯ ОШИБКА - возвращаем ошибку
+                        return json.dumps({
+                            "error": "LLM returned empty JSON and intermediate_steps are empty",
+                            "hint": "Tool was called but result was not captured properly"
+                        }, ensure_ascii=False, indent=2)
+
                     # Проверяем, что это результат от наших инструментов
                     if any(key in parsed for key in ["minio_url", "minio_object_name", "generated_at", "synthesized_at", "created_at"]):
                         # ВАЖНО: Проверяем, что JSON содержит все необходимые поля
@@ -882,7 +942,17 @@ Table (таблица): JSON с полями columns и data
                         if "minio_url" in parsed and "minio_object_name" not in parsed:
                             logger.error(f"LLM returned simplified JSON without minio_object_name! This will break file handling.")
                             logger.error(f"Simplified JSON: {potential_json[:200]}")
-                            # Возвращаем как есть, но логируем проблему
+                            # Пробуем получить полный результат из intermediate_steps
+                            if intermediate_steps:
+                                for action, step_output in reversed(intermediate_steps):
+                                    tool = getattr(action, 'tool', None)
+                                    if tool in ['text_to_speech', 'generate_image', 'create_chart', 'generate_pdf_report', 'generate_docx_report']:
+                                        logger.info(f"Found full tool output in intermediate_steps: {tool}")
+                                        if isinstance(step_output, str):
+                                            return step_output
+                                        elif isinstance(step_output, dict):
+                                            return json.dumps(step_output, ensure_ascii=False, indent=2)
+                            # Если не нашли - возвращаем упрощённую версию (не идеально, но лучше чем ничего)
                             return json.dumps(parsed, ensure_ascii=False, indent=2)
 
                         # Возвращаем чистый JSON
