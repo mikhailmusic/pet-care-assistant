@@ -931,15 +931,8 @@ class OrchestratorAgent:
                     # Обрабатываем токены GigaChat перед парсингом
                     if isinstance(result, str):
                         cleaned_result = result.replace("<|superquote|>", '"')
-
-                        # Экранируем переносы строк в строковых значениях
                         import re
-                        def escape_newlines_in_strings(match):
-                            value = match.group(1)
-                            value = value.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-                            return f'"{value}"'
-
-                        cleaned_result = re.sub(r'"([^"]*)"', escape_newlines_in_strings, cleaned_result, flags=re.DOTALL)
+                        cleaned_result = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', cleaned_result)
                         result_data = json.loads(cleaned_result)
                     else:
                         result_data = result
