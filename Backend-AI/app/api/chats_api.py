@@ -76,15 +76,6 @@ async def send_message(
     current_user: CurrentUser,
     service: ChatServiceDep,
 ):
-    """
-    Отправить сообщение и получить ответ от ассистента.
-
-    Этот endpoint:
-    1. Сохраняет сообщение пользователя
-    2. Запускает оркестратор агентов
-    3. Сохраняет ответ ассистента
-    4. Возвращает ответ ассистента
-    """
     return await service.send_message(
         chat_id=chat_id,
         user_id=current_user.id,

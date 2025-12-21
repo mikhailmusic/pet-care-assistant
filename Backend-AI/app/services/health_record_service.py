@@ -7,7 +7,7 @@ from app.models import HealthRecord, RecordType
 
 
 class HealthRecordService:
-    def __init__(self, health_repo: HealthRecordRepository,pet_repository: PetRepository):
+    def __init__(self, health_repo: HealthRecordRepository, pet_repository: PetRepository):
         self.health_repo = health_repo
         self.pet_repository = pet_repository
     

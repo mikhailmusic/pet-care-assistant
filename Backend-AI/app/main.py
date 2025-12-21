@@ -9,10 +9,6 @@ from app.integrations import init_db, close_db
 from app.integrations import minio_service
 from app.utils.exceptions import PetCareException
 from app.api import auth_api, chats_api, messages_api, files_api
-from app.agents.calendar_agent import CalendarAgent
-from app.dependencies.services import get_user_service
-from app.services.user_service import UserService
-from fastapi import Depends
 
 
 @asynccontextmanager
@@ -106,52 +102,6 @@ async def health_check():
         "docs": "/docs" if settings.DEBUG else "Disabled in production",
     }
 
-@app.post("/test/calendar", tags=["Testing"])
-async def test_calendar_agent(
-    request: dict,  # {"user_id": 123, "message": "...", "context": {...}}
-    user_service: UserService = Depends(get_user_service)
-):
-    """
-    Тестовый endpoint для проверки CalendarAgent
-    
-    Пример запроса:
-    {
-        "user_id": 1,
-        "message": "Напомни о прививке завтра в 14:00",
-        "context": {
-            "user_timezone": "Europe/Moscow",
-            "current_pet_name": "Барсик"
-        }
-    }
-    """
-    try:
-        # Создаём UserService
-        
-        
-        # Создаём CalendarAgent
-        agent = CalendarAgent(user_service=user_service)
-        
-        # Обрабатываем запрос
-        result = await agent.process(
-            user_id=request.get("user_id"),
-            user_message=request.get("message"),
-            context=request.get("context", {})
-        )
-        
-        return {
-            "success": True,
-            "result": result
-        }
-        
-    except Exception as e:
-        logger.exception("Test calendar agent failed")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": str(e)
-            }
-        )
 
 if __name__ == "__main__":
     import uvicorn

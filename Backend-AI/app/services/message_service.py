@@ -31,8 +31,6 @@ def _detect_message_type(files: Optional[List[FileMetadataDTO]]) -> MessageType:
 
 
 class MessageService:
-    """Сервис для сообщений + привязка файлов + метаданные."""
-
     def __init__(
         self,
         message_repository: MessageRepository,
@@ -51,10 +49,6 @@ class MessageService:
             raise AuthorizationException("Нет доступа к этому чату")
 
     async def _resolve_files(self, user_id: int, file_ids: Optional[List[str]]) -> Optional[List[Dict[str, Any]]]:
-        """
-        file_ids: список object_name в MinIO
-        Возвращает: список dict-ов (как в Message.files JSON), чтобы фронт сразу мог рисовать карточки.
-        """
         if not file_ids:
             return None
 
@@ -62,10 +56,8 @@ class MessageService:
         for fid in file_ids:
             meta = await self.file_service.get_file_metadata(user_id=user_id, file_id=fid)
             file_dict = meta.model_dump()
-            # Добавляем object_name для агентов (если его нет)
             if "object_name" not in file_dict:
                 file_dict["object_name"] = fid
-            # Переименовываем file_name в filename для совместимости с агентами
             if "file_name" in file_dict and "filename" not in file_dict:
                 file_dict["filename"] = file_dict["file_name"]
             resolved.append(file_dict)
@@ -77,7 +69,6 @@ class MessageService:
         user_id: int,
         message_dto: MessageCreateDTO,
     ) -> MessageResponseDTO:
-        """Создать USER сообщение. Резолвит file_ids -> files metadata."""
         await self._assert_chat_access(chat_id, user_id)
 
         files_json = await self._resolve_files(user_id=user_id, file_ids=message_dto.files)
@@ -108,10 +99,7 @@ class MessageService:
         processing_time_ms: Optional[int] = None,
         generated_file_ids: Optional[List[str]] = None,
     ) -> MessageResponseDTO:
-        """
-        Создать ASSISTANT сообщение.
-        generated_file_ids — если ассистент/контент-агент создал файлы и сохранил в MinIO.
-        """
+
         await self._assert_chat_access(chat_id, user_id)
 
         files_json = await self._resolve_files(user_id=user_id, file_ids=generated_file_ids)
@@ -137,12 +125,10 @@ class MessageService:
         user_id: int,
         patch: Dict[str, Any],
     ) -> MessageResponseDTO:
-        """Добавить/обновить metadata_json (патчем)."""
         msg = await self.message_repository.get_by_id(message_id)
         if not msg:
             raise MessageNotFoundException(message_id)
 
-        # доступ через чат
         await self._assert_chat_access(msg.chat_id, user_id)
 
         if not msg.metadata_json:
@@ -160,10 +146,8 @@ class MessageService:
         limit: int = 100,
         order: str = "asc",  # "asc" | "desc"
     ) -> List[MessageResponseDTO]:
-        """Сообщения для UI (пагинация)."""
         await self._assert_chat_access(chat_id, user_id)
 
-        # Сортировка теперь в БД (правильно: сначала ORDER BY, потом LIMIT)
         order_desc = order.lower() == "desc"
         messages = await self.message_repository.get_chat_messages(
             chat_id=chat_id,
@@ -180,10 +164,6 @@ class MessageService:
         user_id: int,
         limit: Optional[int] = None,
     ) -> List[Message]:
-        """
-        Последние N сообщений для LLM (строго old -> new).
-        Учитывает chat.message_limit, если limit не передан.
-        """
         chat = await self.chat_repository.get_by_id(chat_id)
         if not chat:
             raise ChatNotFoundException(chat_id)
@@ -191,7 +171,6 @@ class MessageService:
             raise AuthorizationException("Нет доступа к этому чату")
 
         effective_limit = limit or chat.message_limit or 20
-        # Берем последние не удаленные сообщения, а затем переворачиваем в порядок диалога (old -> new).
         messages = await self.message_repository.get_chat_messages(
             chat_id=chat_id,
             limit=effective_limit,
@@ -209,19 +188,6 @@ class MessageService:
         file_ids: Optional[List[str]] = None,
         delete_subsequent: bool = True,
     ) -> tuple[MessageResponseDTO, int]:
-        """
-        Редактирование только USER сообщений.
-
-        Args:
-            message_id: ID редактируемого сообщения
-            user_id: ID пользователя
-            content: Новый текст сообщения
-            file_ids: Новые файлы (если None, файлы не меняются)
-            delete_subsequent: Удалять ли последующие сообщения (для регенерации ответа)
-
-        Returns:
-            tuple: (обновленное сообщение, количество удаленных последующих сообщений)
-        """
         msg = await self.message_repository.get_by_id(message_id)
         if not msg:
             raise MessageNotFoundException(message_id)
@@ -231,7 +197,6 @@ class MessageService:
         if msg.role != MessageRole.USER:
             raise AuthorizationException("Можно редактировать только свои сообщения")
 
-        # Удаляем последующие сообщения (отбрасываем историю для регенерации)
         deleted_count = 0
         if delete_subsequent:
             deleted_count = await self.message_repository.delete_messages_after(
@@ -240,7 +205,6 @@ class MessageService:
             )
             logger.info(f"Deleted {deleted_count} messages after {message_id} for regeneration")
 
-        # Обновляем само сообщение
         msg.content = content or ""
 
         if file_ids is not None:
@@ -258,7 +222,6 @@ class MessageService:
         message_id: int,
         user_id: int,
     ) -> bool:
-        """Soft delete."""
         msg = await self.message_repository.get_by_id(message_id)
         if not msg:
             raise MessageNotFoundException(message_id)
